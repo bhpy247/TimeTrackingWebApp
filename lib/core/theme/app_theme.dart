@@ -180,7 +180,7 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         height: 65,
         elevation: 8,
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: const Color(0xFF1E293B),
         indicatorColor: primarySeedColor.withOpacity(0.2),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         iconTheme: MaterialStateProperty.resolveWith((states) {

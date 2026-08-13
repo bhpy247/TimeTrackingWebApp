@@ -75,7 +75,14 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
   String _formatDuration(Duration d) {
     final hours = d.inHours;
     final minutes = d.inMinutes % 60;
-    return '${hours}h ${minutes}m';
+    final seconds = d.inSeconds % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
+    }
   }
 
   Future<void> _selectTime(bool isStart) async {
@@ -243,24 +250,82 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
                 children: [
                   Text('WORK TYPE', style: theme.textTheme.labelMedium),
                   const SizedBox(height: 12),
-                  SegmentedButton<WorkType>(
-                    segments: const [
-                      ButtonSegment(value: WorkType.office, label: Text('Office'), icon: Icon(Icons.business)),
-                      ButtonSegment(value: WorkType.wfh, label: Text('WFH'), icon: Icon(Icons.home_outlined)),
-                      ButtonSegment(value: WorkType.leave, label: Text('Leave'), icon: Icon(Icons.beach_access_outlined)),
-                      ButtonSegment(value: WorkType.holiday, label: Text('Holiday'), icon: Icon(Icons.star_outline)),
-                    ],
-                    selected: {_workType},
-                    onSelectionChanged: (newSelection) {
-                      setState(() {
-                        _workType = newSelection.first;
-                        if (_workType == WorkType.leave || _workType == WorkType.holiday) {
-                          _startTime = null;
-                          _endTime = null;
-                          _breaks.clear();
-                        }
-                      });
-                    },
+                  Row(
+                    children: WorkType.values.map((type) {
+                      final isSelected = _workType == type;
+                      
+                      IconData icon;
+                      String label;
+                      switch (type) {
+                        case WorkType.office:
+                          icon = Icons.business;
+                          label = 'Office';
+                          break;
+                        case WorkType.wfh:
+                          icon = Icons.home_outlined;
+                          label = 'WFH';
+                          break;
+                        case WorkType.leave:
+                          icon = Icons.beach_access_outlined;
+                          label = 'Leave';
+                          break;
+                        case WorkType.holiday:
+                          icon = Icons.star_outline;
+                          label = 'Holiday';
+                          break;
+                      }
+
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                _workType = type;
+                                if (_workType == WorkType.leave || _workType == WorkType.holiday) {
+                                  _startTime = null;
+                                  _endTime = null;
+                                  _breaks.clear();
+                                }
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? theme.colorScheme.primaryContainer.withOpacity(0.3)
+                                    : theme.colorScheme.surfaceVariant.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected ? theme.colorScheme.primary : theme.colorScheme.outlineVariant.withOpacity(0.5),
+                                  width: isSelected ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    icon,
+                                    size: 20,
+                                    color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ],
               ),

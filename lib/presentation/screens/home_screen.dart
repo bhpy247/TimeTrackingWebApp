@@ -31,6 +31,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return '${hours}h ${minutes}m ${seconds}s';
   }
 
+  String _formatBreakDuration(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes % 60;
+    final seconds = d.inSeconds % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
+    }
+  }
+
   String _formatTime(DateTime? dt) {
     if (dt == null) return '--:--';
     return DateFormat('hh:mm a').format(dt);
@@ -115,11 +128,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildHeader(ThemeData theme) {
     final now = DateTime.now();
     final dateStr = DateFormat('EEEE, d MMMM').format(now);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
               'Good Day 👋',
@@ -127,16 +141,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 color: theme.colorScheme.onBackground.withOpacity(0.6),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              dateStr,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            const LiveHeaderClock(),
           ],
         ),
-        const LiveHeaderClock(),
+        const SizedBox(height: 6),
+        Text(
+          dateStr,
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ],
     );
   }
@@ -427,6 +441,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       theme,
                       time: _formatTime(b.endTime),
                       label: 'Break Ended',
+                      description: 'Duration: ${_formatBreakDuration(b.duration)}',
                       isFirst: false,
                       isLast: isLastBreak,
                       color: Colors.teal,

@@ -56,6 +56,23 @@ class ReportsScreen extends ConsumerWidget {
 
           final totalDays = _getDaysInMonth(selectedMonth);
 
+          // Calculate dynamic Y-axis maximum based on actual logged hours
+          final maxHours = entries.isEmpty
+              ? 0.0
+              : entries
+                  .map((e) => TimeCalculator.calculateWorkingDuration(e).inMinutes / 60.0)
+                  .fold<double>(0.0, (max, val) => val > max ? val : max);
+          
+          final chartMaxY = maxHours == 0.0
+              ? 8.0
+              : maxHours <= 0.1
+                  ? 0.1 // 6 mins max
+                  : maxHours <= 1.0
+                      ? 1.0 // 1 hour max
+                      : maxHours <= 4.0
+                          ? 4.0 // 4 hours max
+                          : (maxHours + 1.0).ceilToDouble();
+
           // Calculations
           final totalDuration = TimeCalculator.calculateMonthlyTotal(entries);
           final averageDuration = TimeCalculator.calculateMonthlyAverage(entries);
@@ -276,52 +293,125 @@ class ReportsScreen extends ConsumerWidget {
                       else
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: 600,
-                            height: 200,
-                            child: BarChart(
-                              BarChartData(
-                                alignment: BarChartAlignment.spaceAround,
-                                maxY: 12,
-                                barTouchData: BarTouchData(enabled: true),
-                                titlesData: FlTitlesData(
-                                  show: true,
-                                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                  bottomTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      getTitlesWidget: (val, meta) {
-                                        if (val.toInt() % 5 == 0 || val.toInt() == 1 || val.toInt() == totalDays) {
-                                          return Text('${val.toInt()}', style: const TextStyle(fontSize: 8));
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 16, right: 16),
+                            child: SizedBox(
+                              width: 600,
+                              height: 200,
+                              child: BarChart(
+                                BarChartData(
+                                  alignment: BarChartAlignment.spaceAround,
+                                  maxY: chartMaxY * 1.15, // Add a 15% top buffer to prevent label clipping
+                                  barTouchData: BarTouchData(
+                                    enabled: true,
+                                    touchTooltipData: BarTouchTooltipData(
+                                      getTooltipColor: (group) => theme.colorScheme.inverseSurface,
+                                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                                        final hours = rod.toY;
+                                        final duration = Duration(minutes: (hours * 60).round());
+                                        
+                                        String formatted;
+                                        if (duration == Duration.zero) {
+                                          formatted = '0h';
+                                        } else {
+                                          final h = duration.inHours;
+                                          final m = duration.inMinutes % 60;
+                                          final s = duration.inSeconds % 60;
+                                          if (h > 0) {
+                                            formatted = '${h}h ${m}m';
+                                          } else if (m > 0) {
+                                            formatted = '${m}m';
+                                          } else {
+                                            formatted = '${s}s';
+                                          }
                                         }
-                                        return const SizedBox.shrink();
+
+                                        return BarTooltipItem(
+                                          'Day ${group.x.toInt()}\n',
+                                          TextStyle(
+                                            color: theme.colorScheme.onInverseSurface,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                          ),
+                                          children: [
+                                            TextSpan(
+                                              text: formatted,
+                                              style: TextStyle(
+                                                color: theme.brightness == Brightness.dark
+                                                    ? theme.colorScheme.primary
+                                                    : theme.colorScheme.onInverseSurface,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        );
                                       },
                                     ),
                                   ),
-                                ),
-                                gridData: const FlGridData(show: false),
-                                borderData: FlBorderData(show: false),
-                                barGroups: List.generate(totalDays, (i) {
-                                  final day = i + 1;
-                                  double valY = 0.0;
-                                  try {
-                                    final dayEntry = entries.firstWhere((e) => e.date.day == day);
-                                    valY = TimeCalculator.calculateWorkingDuration(dayEntry).inMinutes / 60.0;
-                                  } catch (_) {}
-
-                                  return BarChartGroupData(
-                                    x: day,
-                                    barRods: [
-                                      BarChartRodData(
-                                        toY: valY,
-                                        color: theme.colorScheme.primary,
-                                        width: 8,
-                                        borderRadius: BorderRadius.circular(4),
+                                  titlesData: FlTitlesData(
+                                    show: true,
+                                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                    bottomTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        getTitlesWidget: (val, meta) {
+                                          if (val.toInt() <= 0 || val.toInt() > totalDays) {
+                                            return const SizedBox.shrink();
+                                          }
+                                          if (val.toInt() % 5 == 0 || val.toInt() == 1 || val.toInt() == totalDays) {
+                                            return Text('${val.toInt()}', style: const TextStyle(fontSize: 8));
+                                          }
+                                          return const SizedBox.shrink();
+                                        },
                                       ),
-                                    ],
-                                  );
-                                }),
+                                    ),
+                                    leftTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        reservedSize: 35,
+                                        getTitlesWidget: (value, meta) {
+                                          if (value == 0.0) return const Text('0', style: TextStyle(fontSize: 8));
+                                          if (chartMaxY <= 0.1) {
+                                            final mins = (value * 60).round();
+                                            return Text('${mins}m', style: const TextStyle(fontSize: 8));
+                                          }
+                                          if (chartMaxY <= 1.0) {
+                                            final mins = (value * 60).round();
+                                            return Text('${mins}m', style: const TextStyle(fontSize: 8));
+                                          }
+                                          // Format whole hours as e.g. "8h" instead of "8.0h" to save space
+                                          final isInteger = value.truncateToDouble() == value;
+                                          final formatted = isInteger ? value.toInt().toString() : value.toStringAsFixed(1);
+                                          return Text('${formatted}h', style: const TextStyle(fontSize: 8));
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  gridData: const FlGridData(show: false),
+                                  borderData: FlBorderData(show: false),
+                                  barGroups: List.generate(totalDays, (i) {
+                                    final day = i + 1;
+                                    double valY = 0.0;
+                                    try {
+                                      final dayEntry = entries.firstWhere((e) => e.date.day == day);
+                                      valY = TimeCalculator.calculateWorkingDuration(dayEntry).inMinutes / 60.0;
+                                    } catch (_) {}
+
+                                    return BarChartGroupData(
+                                      x: day,
+                                      barRods: [
+                                        BarChartRodData(
+                                          toY: valY,
+                                          color: theme.colorScheme.primary,
+                                          width: 8,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                      ],
+                                    );
+                                  }),
+                                ),
                               ),
                             ),
                           ),
