@@ -18,6 +18,13 @@ class SettingsRepositoryImpl implements SettingsRepository {
   static const String _keyEveningReminder = 'settings_evening_reminder_time';
   static const String _keyThemeMode = 'settings_theme_mode';
 
+  // Salary/Attendance Keys
+  static const String _keyMonthlySalary = 'settings_monthly_salary';
+  static const String _keyPayrollDays = 'settings_payroll_days';
+  static const String _keyRequiredDuration = 'settings_required_daily_duration_hours';
+  static const String _keyDeductionMethod = 'settings_salary_deduction_method';
+  static const String _keyRoundingMethod = 'settings_rounding_method';
+
   @override
   Future<UserSettings> getSettings() async {
     final startTime = _prefs.getString(_keyStartTime) ?? "10:00";
@@ -29,6 +36,13 @@ class SettingsRepositoryImpl implements SettingsRepository {
     final morningReminder = _prefs.getString(_keyMorningReminder) ?? "10:00";
     final eveningReminder = _prefs.getString(_keyEveningReminder) ?? "19:30";
     final themeString = _prefs.getString(_keyThemeMode) ?? "system";
+
+    // Salary Load
+    final monthlySalary = _prefs.getDouble(_keyMonthlySalary) ?? 70000.0;
+    final payrollDays = _prefs.getInt(_keyPayrollDays) ?? 26;
+    final requiredDuration = _prefs.getDouble(_keyRequiredDuration) ?? 9.5;
+    final deductionString = _prefs.getString(_keyDeductionMethod) ?? SalaryDeductionMethod.perMinute.name;
+    final roundingString = _prefs.getString(_keyRoundingMethod) ?? RoundingMethod.exact.name;
 
     final workingDays = workingDaysString
         .split(',')
@@ -50,6 +64,17 @@ class SettingsRepositoryImpl implements SettingsRepository {
         break;
     }
 
+    // Enum mapping
+    final deductionMethod = SalaryDeductionMethod.values.firstWhere(
+      (e) => e.name == deductionString,
+      orElse: () => SalaryDeductionMethod.perMinute,
+    );
+
+    final roundingMethod = RoundingMethod.values.firstWhere(
+      (e) => e.name == roundingString,
+      orElse: () => RoundingMethod.exact,
+    );
+
     return UserSettings(
       expectedStartTime: startTime,
       expectedEndTime: endTime,
@@ -60,6 +85,11 @@ class SettingsRepositoryImpl implements SettingsRepository {
       morningReminderTime: morningReminder,
       eveningReminderTime: eveningReminder,
       themeMode: themeMode,
+      monthlySalary: monthlySalary,
+      payrollDays: payrollDays,
+      requiredDailyDurationHours: requiredDuration,
+      salaryDeductionMethod: deductionMethod,
+      roundingMethod: roundingMethod,
     );
   }
 
@@ -73,6 +103,13 @@ class SettingsRepositoryImpl implements SettingsRepository {
     await _prefs.setBool(_keyNotificationsEnabled, settings.notificationsEnabled);
     await _prefs.setString(_keyMorningReminder, settings.morningReminderTime);
     await _prefs.setString(_keyEveningReminder, settings.eveningReminderTime);
+
+    // Salary Save
+    await _prefs.setDouble(_keyMonthlySalary, settings.monthlySalary);
+    await _prefs.setInt(_keyPayrollDays, settings.payrollDays);
+    await _prefs.setDouble(_keyRequiredDuration, settings.requiredDailyDurationHours);
+    await _prefs.setString(_keyDeductionMethod, settings.salaryDeductionMethod.name);
+    await _prefs.setString(_keyRoundingMethod, settings.roundingMethod.name);
 
     String themeString;
     switch (settings.themeMode) {

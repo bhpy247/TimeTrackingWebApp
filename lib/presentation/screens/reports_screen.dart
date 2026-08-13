@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../core/utils/file_saver/file_saver.dart' as saver;
 import '../../domain/entities/time_entry.dart';
 import '../../domain/usecases/time_calculator.dart';
+import '../../domain/usecases/salary_calculation_service.dart';
 import '../../services/report/report_service.dart';
 import '../providers/providers.dart';
 
@@ -55,6 +56,28 @@ class ReportsScreen extends ConsumerWidget {
               .toList();
 
           final totalDays = _getDaysInMonth(selectedMonth);
+
+          // Salary & Attendance calculations
+          Duration monthlyAttendance = Duration.zero;
+          Duration monthlyShortfall = Duration.zero;
+          Duration monthlySalaryOvertime = Duration.zero;
+
+          for (final entry in entries) {
+            monthlyAttendance += SalaryCalculationService.calculateAttendanceDuration(entry);
+            monthlyShortfall += SalaryCalculationService.calculateShortfall(entry, settings.requiredDailyDurationHours);
+            monthlySalaryOvertime += SalaryCalculationService.calculateOvertime(entry, settings.requiredDailyDurationHours);
+          }
+
+          final requiredMonthHours = settings.payrollDays * settings.requiredDailyDurationHours;
+          final estimatedDeduction = SalaryCalculationService.calculateEstimatedDeduction(
+            shortfall: monthlyShortfall,
+            monthlySalary: settings.monthlySalary,
+            requiredDailyHours: settings.requiredDailyDurationHours,
+            payrollDays: settings.payrollDays,
+            deductionMethod: settings.salaryDeductionMethod,
+            roundingMethod: settings.roundingMethod,
+          );
+          final estimatedPayableSalary = settings.monthlySalary - estimatedDeduction;
 
           // Calculate dynamic Y-axis maximum based on actual logged hours
           final maxHours = entries.isEmpty
@@ -263,6 +286,51 @@ class ReportsScreen extends ConsumerWidget {
                       _buildRowDetail(theme, 'Total Hours Worked', _formatDuration(totalDuration)),
                       _buildRowDetail(theme, 'Expected Hours', '${expectedMonthHours.toStringAsFixed(1)} hours'),
                       _buildRowDetail(theme, 'Average / Day', _formatDuration(averageDuration)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Salary & Attendance Impact Card
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('ESTIMATED SALARY & ATTENDANCE IMPACT', style: theme.textTheme.labelMedium),
+                      const SizedBox(height: 16),
+                      _buildRowDetail(theme, 'Monthly Salary', '₹${settings.monthlySalary.toStringAsFixed(0)}'),
+                      _buildRowDetail(theme, 'Required Hours', '${requiredMonthHours.toStringAsFixed(1)} hours'),
+                      _buildRowDetail(theme, 'Actual Attendance', _formatHoursMins(monthlyAttendance)),
+                      _buildRowDetail(
+                        theme,
+                        'Shortfall',
+                        _formatHoursMins(monthlyShortfall),
+                        valueColor: monthlyShortfall > Duration.zero ? Colors.red : null,
+                      ),
+                      _buildRowDetail(
+                        theme,
+                        'Overtime',
+                        '+${_formatHoursMins(monthlySalaryOvertime)}',
+                        valueColor: monthlySalaryOvertime > Duration.zero ? Colors.green : null,
+                      ),
+                      const Divider(),
+                      _buildRowDetail(
+                        theme,
+                        'Estimated Deduction',
+                        '₹${estimatedDeduction.toStringAsFixed(0)}',
+                        valueColor: estimatedDeduction > 0 ? Colors.red : null,
+                        isBold: true,
+                      ),
+                      _buildRowDetail(
+                        theme,
+                        'Est. Payable Salary',
+                        '₹${estimatedPayableSalary.toStringAsFixed(0)}',
+                        valueColor: theme.colorScheme.primary,
+                        isBold: true,
+                      ),
                     ],
                   ),
                 ),
@@ -479,7 +547,13 @@ class ReportsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildRowDetail(ThemeData theme, String label, String value) {
+  Widget _buildRowDetail(
+    ThemeData theme,
+    String label,
+    String value, {
+    Color? valueColor,
+    bool isBold = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -488,10 +562,28 @@ class ReportsScreen extends ConsumerWidget {
           Text(label, style: theme.textTheme.bodyMedium),
           Text(
             value,
-            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: valueColor,
+            ),
           ),
         ],
       ),
     );
+  }
+
+  String _formatHoursMins(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes % 60;
+    final seconds = d.inSeconds % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else if (minutes > 0) {
+      return '${minutes}m';
+    } else if (seconds > 0) {
+      return '${seconds}s';
+    } else {
+      return '0h';
+    }
   }
 }

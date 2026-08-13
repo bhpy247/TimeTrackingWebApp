@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../domain/entities/time_entry.dart';
 import '../../domain/usecases/time_calculator.dart';
+import '../../domain/usecases/salary_calculation_service.dart';
 import '../providers/providers.dart';
 
 class DailyDetailScreen extends ConsumerStatefulWidget {
@@ -227,6 +228,23 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
     final overtime = TimeCalculator.calculateOvertime(previewEntry, settings.expectedWorkingHours);
     final shortfall = TimeCalculator.calculateShortfall(previewEntry, settings.expectedWorkingHours);
 
+    // Salary/Attendance calculations (breaks are ignored)
+    final attendanceDuration = SalaryCalculationService.calculateAttendanceDuration(previewEntry);
+    final requiredDuration = (_workType == WorkType.leave || _workType == WorkType.holiday)
+        ? Duration.zero
+        : Duration(minutes: (settings.requiredDailyDurationHours * 60).round());
+    final salaryShortfall = SalaryCalculationService.calculateShortfall(previewEntry, settings.requiredDailyDurationHours);
+    final salaryOvertime = SalaryCalculationService.calculateOvertime(previewEntry, settings.requiredDailyDurationHours);
+    
+    final dailyDeduction = SalaryCalculationService.calculateEstimatedDeduction(
+      shortfall: salaryShortfall,
+      monthlySalary: settings.monthlySalary,
+      requiredDailyHours: settings.requiredDailyDurationHours,
+      payrollDays: settings.payrollDays,
+      deductionMethod: settings.salaryDeductionMethod,
+      roundingMethod: settings.roundingMethod,
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(DateFormat('EEE, d MMMM yyyy').format(widget.date)),
@@ -440,6 +458,30 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
                       _buildCalculationRow(theme, 'Overtime', '+ ${_formatDuration(overtime)}', valueColor: Colors.green)
                     else if (shortfall > Duration.zero)
                       _buildCalculationRow(theme, 'Shortfall', '- ${_formatDuration(shortfall)}', valueColor: Colors.red),
+
+                    const Divider(height: 24),
+                    Text(
+                      'SALARY & ATTENDANCE SUMMARY (ESTIMATED)',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildCalculationRow(theme, 'Attendance Duration', _formatHoursMins(attendanceDuration)),
+                    _buildCalculationRow(theme, 'Required Duration', _formatHoursMins(requiredDuration)),
+                    if (salaryOvertime > Duration.zero)
+                      _buildCalculationRow(theme, 'Overtime', '+ ${_formatHoursMins(salaryOvertime)}', valueColor: Colors.green),
+                    if (salaryShortfall > Duration.zero)
+                      _buildCalculationRow(theme, 'Shortfall', '- ${_formatHoursMins(salaryShortfall)}', valueColor: Colors.red),
+                    const SizedBox(height: 8),
+                    _buildCalculationRow(
+                      theme,
+                      'Est. Salary Impact',
+                      '₹${dailyDeduction.toStringAsFixed(0)}',
+                      valueColor: dailyDeduction > 0 ? Colors.red : null,
+                      isBold: true,
+                    ),
                   ],
                 ),
               ),
@@ -503,5 +545,20 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
         ],
       ),
     );
+  }
+
+  String _formatHoursMins(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes % 60;
+    final seconds = d.inSeconds % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else if (minutes > 0) {
+      return '${minutes}m';
+    } else if (seconds > 0) {
+      return '${seconds}s';
+    } else {
+      return '0h';
+    }
   }
 }

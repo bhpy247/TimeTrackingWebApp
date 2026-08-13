@@ -1,5 +1,18 @@
 import 'package:flutter/material.dart';
 
+enum SalaryDeductionMethod {
+  perMinute,
+  perHour,
+  perDay,
+}
+
+enum RoundingMethod {
+  exact,
+  nearest15,
+  nearest30,
+  nearest60,
+}
+
 class UserSettings {
   final String expectedStartTime; // format: "HH:mm" (24h) or "HH:mm AM/PM"
   final String expectedEndTime;   // format: "HH:mm" (24h) or "HH:mm AM/PM"
@@ -11,6 +24,13 @@ class UserSettings {
   final String eveningReminderTime; // format: "HH:mm"
   final ThemeMode themeMode;
 
+  // New Salary/Attendance fields
+  final double monthlySalary; // e.g. 70000.0
+  final int payrollDays; // e.g. 26
+  final double requiredDailyDurationHours; // e.g. 9.5
+  final SalaryDeductionMethod salaryDeductionMethod;
+  final RoundingMethod roundingMethod;
+
   const UserSettings({
     this.expectedStartTime = "10:00",
     this.expectedEndTime = "19:30",
@@ -21,6 +41,11 @@ class UserSettings {
     this.morningReminderTime = "10:00",
     this.eveningReminderTime = "19:30",
     this.themeMode = ThemeMode.system,
+    this.monthlySalary = 70000.0,
+    this.payrollDays = 26,
+    this.requiredDailyDurationHours = 9.5,
+    this.salaryDeductionMethod = SalaryDeductionMethod.perMinute,
+    this.roundingMethod = RoundingMethod.exact,
   });
 
   UserSettings copyWith({
@@ -33,6 +58,11 @@ class UserSettings {
     String? morningReminderTime,
     String? eveningReminderTime,
     ThemeMode? themeMode,
+    double? monthlySalary,
+    int? payrollDays,
+    double? requiredDailyDurationHours,
+    SalaryDeductionMethod? salaryDeductionMethod,
+    RoundingMethod? roundingMethod,
   }) {
     return UserSettings(
       expectedStartTime: expectedStartTime ?? this.expectedStartTime,
@@ -44,6 +74,11 @@ class UserSettings {
       morningReminderTime: morningReminderTime ?? this.morningReminderTime,
       eveningReminderTime: eveningReminderTime ?? this.eveningReminderTime,
       themeMode: themeMode ?? this.themeMode,
+      monthlySalary: monthlySalary ?? this.monthlySalary,
+      payrollDays: payrollDays ?? this.payrollDays,
+      requiredDailyDurationHours: requiredDailyDurationHours ?? this.requiredDailyDurationHours,
+      salaryDeductionMethod: salaryDeductionMethod ?? this.salaryDeductionMethod,
+      roundingMethod: roundingMethod ?? this.roundingMethod,
     );
   }
 

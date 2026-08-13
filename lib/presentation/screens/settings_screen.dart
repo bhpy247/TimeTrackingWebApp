@@ -1,9 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../domain/entities/user_settings.dart';
 import '../providers/providers.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  late TextEditingController _salaryController;
+  late TextEditingController _payrollDaysController;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = ref.read(settingsProvider);
+    _salaryController = TextEditingController(text: settings.monthlySalary.toStringAsFixed(0));
+    _payrollDaysController = TextEditingController(text: settings.payrollDays.toString());
+  }
+
+  @override
+  void dispose() {
+    _salaryController.dispose();
+    _payrollDaysController.dispose();
+    super.dispose();
+  }
 
   String _formatTimeOfDay(TimeOfDay time) {
     final hour = time.hour.toString().padLeft(2, '0');
@@ -28,8 +52,32 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  String _getDeductionMethodLabel(SalaryDeductionMethod method) {
+    switch (method) {
+      case SalaryDeductionMethod.perMinute:
+        return 'Per Minute';
+      case SalaryDeductionMethod.perHour:
+        return 'Per Hour';
+      case SalaryDeductionMethod.perDay:
+        return 'Per Day';
+    }
+  }
+
+  String _getRoundingMethodLabel(RoundingMethod method) {
+    switch (method) {
+      case RoundingMethod.exact:
+        return 'Exact';
+      case RoundingMethod.nearest15:
+        return 'Nearest 15 minutes';
+      case RoundingMethod.nearest30:
+        return 'Nearest 30 minutes';
+      case RoundingMethod.nearest60:
+        return 'Nearest 1 hour';
+    }
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final theme = Theme.of(context);
 
@@ -42,7 +90,6 @@ class SettingsScreen extends ConsumerWidget {
           _buildSectionHeader(theme, 'Work Schedule'),
           _buildTimeTile(
             context,
-            ref,
             title: 'Expected Start Time',
             subtitle: _formatTimeForDisplay(settings.expectedStartTime),
             currentTime: settings.startTimeOfDay,
@@ -54,7 +101,6 @@ class SettingsScreen extends ConsumerWidget {
           ),
           _buildTimeTile(
             context,
-            ref,
             title: 'Expected End Time',
             subtitle: _formatTimeForDisplay(settings.expectedEndTime),
             currentTime: settings.endTimeOfDay,
@@ -87,14 +133,14 @@ class SettingsScreen extends ConsumerWidget {
           ),
           _buildSectionHeader(theme, 'Working Days'),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
               children: List.generate(7, (index) {
-                final dayNum = index + 1; // 1 = Mon, 7 = Sun
-                final isSelected = settings.workingDays.contains(dayNum);
+                final dayNum = index + 1;
                 final label = _getDayLabel(dayNum);
+                final isSelected = settings.workingDays.contains(dayNum);
 
                 return FilterChip(
                   label: Text(label),
@@ -107,7 +153,6 @@ class SettingsScreen extends ConsumerWidget {
                       if (updatedDays.length > 1) {
                         updatedDays.remove(dayNum);
                       } else {
-                        // Prevent removing all days
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('At least one working day is required.')),
                         );
@@ -123,6 +168,112 @@ class SettingsScreen extends ConsumerWidget {
               }),
             ),
           ),
+
+          _buildSectionHeader(theme, 'Salary & Attendance Rules'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _salaryController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Monthly Salary (₹)',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (val) {
+                      final salary = double.tryParse(val) ?? 0.0;
+                      ref.read(settingsProvider.notifier).updateSettings(
+                            settings.copyWith(monthlySalary: salary),
+                          );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextField(
+                    controller: _payrollDaysController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Payroll Days',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (val) {
+                      final days = int.tryParse(val) ?? 26;
+                      ref.read(settingsProvider.notifier).updateSettings(
+                            settings.copyWith(payrollDays: days),
+                          );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ListTile(
+            title: const Text('Required Daily Duration'),
+            subtitle: Text('${settings.requiredDailyDurationHours} hours'),
+            trailing: DropdownButton<double>(
+              value: settings.requiredDailyDurationHours,
+              underline: const SizedBox(),
+              items: List.generate(17, (index) => 4.0 + (index * 0.5))
+                  .map((val) => DropdownMenuItem(
+                        value: val,
+                        child: Text('$val h'),
+                      ))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  ref.read(settingsProvider.notifier).updateSettings(
+                        settings.copyWith(requiredDailyDurationHours: val),
+                      );
+                }
+              },
+            ),
+          ),
+          ListTile(
+            title: const Text('Salary Deduction Method'),
+            subtitle: Text(_getDeductionMethodLabel(settings.salaryDeductionMethod)),
+            trailing: DropdownButton<SalaryDeductionMethod>(
+              value: settings.salaryDeductionMethod,
+              underline: const SizedBox(),
+              items: SalaryDeductionMethod.values
+                  .map((method) => DropdownMenuItem(
+                        value: method,
+                        child: Text(_getDeductionMethodLabel(method)),
+                      ))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  ref.read(settingsProvider.notifier).updateSettings(
+                        settings.copyWith(salaryDeductionMethod: val),
+                      );
+                }
+              },
+            ),
+          ),
+          ListTile(
+            title: const Text('Rounding Rule'),
+            subtitle: Text(_getRoundingMethodLabel(settings.roundingMethod)),
+            trailing: DropdownButton<RoundingMethod>(
+              value: settings.roundingMethod,
+              underline: const SizedBox(),
+              items: RoundingMethod.values
+                  .map((method) => DropdownMenuItem(
+                        value: method,
+                        child: Text(_getRoundingMethodLabel(method)),
+                      ))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  ref.read(settingsProvider.notifier).updateSettings(
+                        settings.copyWith(roundingMethod: val),
+                      );
+                }
+              },
+            ),
+          ),
+
           _buildSectionHeader(theme, 'Notifications'),
           SwitchListTile(
             title: const Text('Enable Notifications'),
@@ -176,8 +327,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Widget _buildTimeTile(
-    BuildContext context,
-    WidgetRef ref, {
+    BuildContext context, {
     required String title,
     required String subtitle,
     required TimeOfDay currentTime,

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../domain/entities/time_entry.dart';
 import '../../domain/usecases/time_calculator.dart';
+import '../../domain/usecases/salary_calculation_service.dart';
+import '../../domain/entities/user_settings.dart';
 import '../providers/providers.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -114,7 +116,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // Monthly Summary Card
               monthEntriesAsync.when(
-                data: (entries) => _buildMonthlySummary(theme, entries, settings.expectedWorkingHours),
+                data: (entries) => _buildMonthlySummary(theme, entries, settings),
                 loading: () => const SizedBox.shrink(),
                 error: (err, stack) => const SizedBox.shrink(),
               ),
@@ -539,14 +541,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildMonthlySummary(ThemeData theme, List<TimeEntry> entries, double expectedHours) {
+  Widget _buildMonthlySummary(ThemeData theme, List<TimeEntry> entries, UserSettings settings) {
     final totalDuration = TimeCalculator.calculateMonthlyTotal(entries);
     final averageDuration = TimeCalculator.calculateMonthlyAverage(entries);
 
     // Sum up overtime
     Duration totalOvertime = Duration.zero;
     for (final entry in entries) {
-      totalOvertime += TimeCalculator.calculateOvertime(entry, expectedHours);
+      totalOvertime += TimeCalculator.calculateOvertime(entry, settings.expectedWorkingHours);
     }
 
     String formatDurationSummary(Duration d) {
@@ -568,6 +570,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final now = DateTime.now();
     final monthName = DateFormat('MMMM').format(now);
+
+    // Salary & Attendance calculations
+    Duration monthlyAttendance = Duration.zero;
+    Duration monthlyShortfall = Duration.zero;
+    Duration monthlySalaryOvertime = Duration.zero;
+
+    for (final entry in entries) {
+      monthlyAttendance += SalaryCalculationService.calculateAttendanceDuration(entry);
+      monthlyShortfall += SalaryCalculationService.calculateShortfall(entry, settings.requiredDailyDurationHours);
+      monthlySalaryOvertime += SalaryCalculationService.calculateOvertime(entry, settings.requiredDailyDurationHours);
+    }
+
+    final requiredMonthHours = settings.payrollDays * settings.requiredDailyDurationHours;
+    final estimatedDeduction = SalaryCalculationService.calculateEstimatedDeduction(
+      shortfall: monthlyShortfall,
+      monthlySalary: settings.monthlySalary,
+      requiredDailyHours: settings.requiredDailyDurationHours,
+      payrollDays: settings.payrollDays,
+      deductionMethod: settings.salaryDeductionMethod,
+      roundingMethod: settings.roundingMethod,
+    );
 
     return Card(
       color: theme.colorScheme.surface,
@@ -593,10 +616,80 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 _buildSummaryStat(theme, overtimeStr, 'Overtime', color: Colors.green),
               ],
             ),
+            const Divider(height: 32),
+            Text(
+              'ESTIMATED SALARY IMPACT',
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                letterSpacing: 1.1,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildSalaryRow(theme, 'Required Hours', '${requiredMonthHours.toStringAsFixed(1)}h'),
+            _buildSalaryRow(theme, 'Worked (Attendance)', _formatHoursMins(monthlyAttendance)),
+            _buildSalaryRow(theme, 'Shortfall', _formatHoursMins(monthlyShortfall), valueColor: monthlyShortfall > Duration.zero ? Colors.red : null),
+            _buildSalaryRow(theme, 'Overtime', '+${_formatHoursMins(monthlySalaryOvertime)}', valueColor: monthlySalaryOvertime > Duration.zero ? Colors.green : null),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Estimated Deduction',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '₹${estimatedDeduction.toStringAsFixed(0)}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSalaryRow(ThemeData theme, String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+            ),
+          ),
+          Text(
+            value,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: valueColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatHoursMins(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes % 60;
+    final seconds = d.inSeconds % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else if (minutes > 0) {
+      return '${minutes}m';
+    } else if (seconds > 0) {
+      return '${seconds}s';
+    } else {
+      return '0h';
+    }
   }
 
   Widget _buildSummaryStat(ThemeData theme, String value, String label, {Color? color}) {
