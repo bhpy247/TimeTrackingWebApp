@@ -75,14 +75,7 @@ final settingsProvider = StateNotifierProvider<SettingsNotifier, UserSettings>((
 class SettingsNotifier extends StateNotifier<UserSettings> {
   final SettingsRepository _repository;
 
-  SettingsNotifier(this._repository) : super(const UserSettings()) {
-    _loadSettings();
-  }
-
-  Future<void> _loadSettings() async {
-    final settings = await _repository.getSettings();
-    state = settings;
-  }
+  SettingsNotifier(this._repository) : super(_repository.getSettings());
 
   Future<void> updateSettings(UserSettings settings) async {
     await _repository.saveSettings(settings);

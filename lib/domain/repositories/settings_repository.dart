@@ -1,6 +1,6 @@
 import '../entities/user_settings.dart';
 
 abstract class SettingsRepository {
-  Future<UserSettings> getSettings();
+  UserSettings getSettings();
   Future<void> saveSettings(UserSettings settings);
 }

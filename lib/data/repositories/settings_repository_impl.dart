@@ -26,7 +26,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
   static const String _keyRoundingMethod = 'settings_rounding_method';
 
   @override
-  Future<UserSettings> getSettings() async {
+  UserSettings getSettings() {
     final startTime = _prefs.getString(_keyStartTime) ?? "10:00";
     final endTime = _prefs.getString(_keyEndTime) ?? "19:30";
     final workingHours = _prefs.getDouble(_keyWorkingHours) ?? 8.5;
