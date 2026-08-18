@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/utils/file_saver/file_saver.dart' as saver;
 import '../../domain/entities/time_entry.dart';
+import '../../domain/entities/user_settings.dart';
 import '../../domain/usecases/time_calculator.dart';
 import '../../domain/usecases/salary_calculation_service.dart';
 import '../../services/report/report_service.dart';
@@ -64,7 +65,9 @@ class ReportsScreen extends ConsumerWidget {
 
           for (final entry in entries) {
             monthlyAttendance += SalaryCalculationService.calculateAttendanceDuration(entry);
-            monthlyShortfall += SalaryCalculationService.calculateShortfall(entry, settings.requiredDailyDurationHours);
+            final rawShortfall = SalaryCalculationService.calculateShortfall(entry, settings.requiredDailyDurationHours);
+            final roundedShortfall = SalaryCalculationService.applyRounding(rawShortfall, settings.roundingMethod);
+            monthlyShortfall += roundedShortfall;
             monthlySalaryOvertime += SalaryCalculationService.calculateOvertime(entry, settings.requiredDailyDurationHours);
           }
 
@@ -75,7 +78,7 @@ class ReportsScreen extends ConsumerWidget {
             requiredDailyHours: settings.requiredDailyDurationHours,
             payrollDays: settings.payrollDays,
             deductionMethod: settings.salaryDeductionMethod,
-            roundingMethod: settings.roundingMethod,
+            roundingMethod: RoundingMethod.exact,
           );
           final estimatedPayableSalary = settings.monthlySalary - estimatedDeduction;
 

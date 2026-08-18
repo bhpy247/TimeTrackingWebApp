@@ -278,5 +278,65 @@ void main() {
       );
       expect(decShort, decLong);
     });
+
+    test('No shortfall carryforward: daily rounding test', () {
+      final entries = [
+        TimeEntry(
+          date: DateTime(2026, 8, 10),
+          startTime: DateTime(2026, 8, 10, 10, 0),
+          endTime: DateTime(2026, 8, 10, 19, 20), // Attendance: 9h 20m -> Shortfall: 10m
+          workType: WorkType.office,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+        TimeEntry(
+          date: DateTime(2026, 8, 11),
+          startTime: DateTime(2026, 8, 11, 10, 0),
+          endTime: DateTime(2026, 8, 11, 19, 20), // Attendance: 9h 20m -> Shortfall: 10m
+          workType: WorkType.office,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+        TimeEntry(
+          date: DateTime(2026, 8, 12),
+          startTime: DateTime(2026, 8, 12, 10, 0),
+          endTime: DateTime(2026, 8, 12, 19, 20), // Attendance: 9h 20m -> Shortfall: 10m
+          workType: WorkType.office,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+      ];
+
+      final settings = UserSettings(
+        requiredDailyDurationHours: 9.5, // 9h 30m required
+        roundingMethod: RoundingMethod.nearest30,
+        monthlySalary: 70000,
+        payrollDays: 26,
+        salaryDeductionMethod: SalaryDeductionMethod.perMinute,
+      );
+
+      // Verify that summing the daily rounded shortfalls gives 0
+      Duration monthlyShortfall = Duration.zero;
+      for (final entry in entries) {
+        final raw = SalaryCalculationService.calculateShortfall(entry, settings.requiredDailyDurationHours);
+        expect(raw, const Duration(minutes: 10));
+        
+        final rounded = SalaryCalculationService.applyRounding(raw, settings.roundingMethod);
+        expect(rounded, Duration.zero); // 10m rounded to nearest 30m is 0m
+
+        monthlyShortfall += rounded;
+      }
+      expect(monthlyShortfall, Duration.zero);
+
+      final deduction = SalaryCalculationService.calculateEstimatedDeduction(
+        shortfall: monthlyShortfall,
+        monthlySalary: settings.monthlySalary,
+        requiredDailyHours: settings.requiredDailyDurationHours,
+        payrollDays: settings.payrollDays,
+        deductionMethod: settings.salaryDeductionMethod,
+        roundingMethod: RoundingMethod.exact,
+      );
+      expect(deduction, 0.0);
+    });
   });
 }

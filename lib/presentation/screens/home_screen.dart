@@ -578,7 +578,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     for (final entry in entries) {
       monthlyAttendance += SalaryCalculationService.calculateAttendanceDuration(entry);
-      monthlyShortfall += SalaryCalculationService.calculateShortfall(entry, settings.requiredDailyDurationHours);
+      final rawShortfall = SalaryCalculationService.calculateShortfall(entry, settings.requiredDailyDurationHours);
+      final roundedShortfall = SalaryCalculationService.applyRounding(rawShortfall, settings.roundingMethod);
+      monthlyShortfall += roundedShortfall;
       monthlySalaryOvertime += SalaryCalculationService.calculateOvertime(entry, settings.requiredDailyDurationHours);
     }
 
@@ -589,7 +591,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       requiredDailyHours: settings.requiredDailyDurationHours,
       payrollDays: settings.payrollDays,
       deductionMethod: settings.salaryDeductionMethod,
-      roundingMethod: settings.roundingMethod,
+      roundingMethod: RoundingMethod.exact,
     );
 
     return Card(
