@@ -1,0 +1,59 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Deep premium background gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="50%" stop-color="#120e2e"/>
+      <stop offset="100%" stop-color="#05030a"/>
+    </linearGradient>
+
+    <!-- Glowing accent ring gradient -->
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="50%" stop-color="#4facfe"/>
+      <stop offset="100%" stop-color="#b927fc"/>
+    </linearGradient>
+
+    <!-- Glowing filters for premium neon effect -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Background base -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+
+  <!-- Translucent glass inner face -->
+  <circle cx="256" cy="256" r="180" fill="white" fill-opacity="0.03" stroke="white" stroke-opacity="0.08" stroke-width="2"/>
+
+  <!-- Hour Ticks (12, 3, 6, 9) -->
+  <line x1="256" y1="86" x2="256" y2="102" stroke="white" stroke-opacity="0.4" stroke-width="4" stroke-linecap="round"/>
+  <line x1="426" y1="256" x2="410" y2="256" stroke="white" stroke-opacity="0.4" stroke-width="4" stroke-linecap="round"/>
+  <line x1="256" y1="426" x2="256" y2="410" stroke="white" stroke-opacity="0.4" stroke-width="4" stroke-linecap="round"/>
+  <line x1="86" y1="256" x2="102" y2="256" stroke="white" stroke-opacity="0.4" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Dashed minute ring details -->
+  <circle cx="256" cy="256" r="120" fill="none" stroke="white" stroke-opacity="0.1" stroke-width="2" stroke-dasharray="6 12"/>
+
+  <!-- Neon progress/clock ring (representing time spent tracking) -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="url(#ringGrad)" stroke-width="20" stroke-linecap="round" stroke-dasharray="942" stroke-dashoffset="235" filter="url(#glow)"/>
+
+  <!-- Clock hands with drop shadows -->
+  <!-- Hour hand (rotated to 315 deg, i.e., 10 o'clock direction) -->
+  <line x1="256" y1="256" x2="256" y2="170" stroke="#ffffff" stroke-width="12" stroke-linecap="round" transform="rotate(315 256 256)" filter="url(#shadow)"/>
+  
+  <!-- Minute hand (rotated to 60 deg, i.e., 2 o'clock direction) -->
+  <line x1="256" y1="256" x2="256" y2="120" stroke="#00f2fe" stroke-width="8" stroke-linecap="round" transform="rotate(60 256 256)" filter="url(#shadow)"/>
+
+  <!-- Center hub and pin -->
+  <circle cx="256" cy="256" r="14" fill="#120e2e" stroke="#00f2fe" stroke-width="3"/>
+  <circle cx="256" cy="256" r="5" fill="#ffffff"/>
+</svg>
