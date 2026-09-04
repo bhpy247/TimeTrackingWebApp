@@ -159,6 +159,7 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
     await repo.saveEntry(newEntry);
     ref.invalidate(todayTimeEntryProvider);
     ref.invalidate(currentMonthEntriesProvider);
+    ref.invalidate(monthlyEntriesProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -192,6 +193,7 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
       await repo.deleteEntry(_entry!.id!);
       ref.invalidate(todayTimeEntryProvider);
       ref.invalidate(currentMonthEntriesProvider);
+      ref.invalidate(monthlyEntriesProvider);
       
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Entry deleted.')),

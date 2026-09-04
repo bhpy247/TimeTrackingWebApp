@@ -176,8 +176,12 @@ final selectedMonthProvider = StateProvider<DateTime>((ref) {
   return DateTime(now.year, now.month, 1);
 });
 
-final monthlyCalendarEntriesProvider = FutureProvider.family<List<TimeEntry>, DateTime>((ref, month) {
+// Provider for fetching entries for a specific month (used in calendar and reports)
+final monthlyEntriesProvider = FutureProvider.family<List<TimeEntry>, DateTime>((ref, month) {
   final repo = ref.watch(timeEntryRepositoryProvider);
   ref.watch(todayTimeEntryProvider); // Automatically reload when today's entry changes
   return repo.getEntriesForMonth(month);
 });
+
+// Alias for backwards compatibility
+final monthlyCalendarEntriesProvider = monthlyEntriesProvider;

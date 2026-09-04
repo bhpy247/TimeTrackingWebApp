@@ -38,7 +38,7 @@ class ReportsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedMonth = ref.watch(selectedReportMonthProvider);
-    final entriesAsync = ref.watch(currentMonthEntriesProvider); // Refers to database provider cached month
+    final entriesAsync = ref.watch(monthlyEntriesProvider(selectedMonth));
     final settings = ref.watch(settingsProvider);
     final theme = Theme.of(context);
 
@@ -222,6 +222,7 @@ class ReportsScreen extends ConsumerWidget {
                           'time_report_${DateFormat('yyyy_MM').format(selectedMonth)}.csv',
                           'text/csv',
                         );
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('CSV Report downloaded successfully.')),
                         );
@@ -240,6 +241,7 @@ class ReportsScreen extends ConsumerWidget {
                           'time_report_${DateFormat('yyyy_MM').format(selectedMonth)}.pdf',
                           'application/pdf',
                         );
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('PDF Report generated and downloaded.')),
                         );
