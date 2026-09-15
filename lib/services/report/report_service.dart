@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -109,14 +110,21 @@ class ReportService {
     final totalHoursStr = '${totalDuration.inHours}h ${totalDuration.inMinutes % 60}m';
     final averageHoursStr = '${averageDuration.inHours}h ${averageDuration.inMinutes % 60}m';
 
-    // Load Unicode fonts (Roboto) to support all currency symbols and Unicode characters
+    // Load Unicode fonts (Roboto) to support all currency symbols and Unicode characters offline & online
     pw.Font? ttfRegular;
     pw.Font? ttfBold;
     try {
-      ttfRegular = await PdfGoogleFonts.robotoRegular();
-      ttfBold = await PdfGoogleFonts.robotoBold();
+      final regularData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
+      final boldData = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
+      ttfRegular = pw.Font.ttf(regularData);
+      ttfBold = pw.Font.ttf(boldData);
     } catch (_) {
-      // Fallback if font network request is unavailable
+      try {
+        ttfRegular = await PdfGoogleFonts.robotoRegular();
+        ttfBold = await PdfGoogleFonts.robotoBold();
+      } catch (_) {
+        // Fallback if font network and assets are unavailable
+      }
     }
 
     final pageTheme = (ttfRegular != null && ttfBold != null)
