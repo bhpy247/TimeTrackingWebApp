@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,10 +10,23 @@ import '../../domain/usecases/time_calculator.dart';
 import '../../domain/usecases/salary_calculation_service.dart';
 import '../../services/report/report_service.dart';
 import '../providers/providers.dart';
+import 'daily_detail_screen.dart';
+
+enum ReportScope { month, allTime, customRange }
+
+final reportScopeProvider = StateProvider<ReportScope>((ref) => ReportScope.month);
 
 final selectedReportMonthProvider = StateProvider<DateTime>((ref) {
   final now = DateTime.now();
   return DateTime(now.year, now.month, 1);
+});
+
+final reportCustomDateRangeProvider = StateProvider<DateTimeRange?>((ref) {
+  final now = DateTime.now();
+  return DateTimeRange(
+    start: DateTime(now.year, now.month, 1),
+    end: DateTime(now.year, now.month, now.day),
+  );
 });
 
 class ReportsScreen extends ConsumerWidget {
@@ -37,12 +51,16 @@ class ReportsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scope = ref.watch(reportScopeProvider);
     final selectedMonth = ref.watch(selectedReportMonthProvider);
-    final entriesAsync = ref.watch(monthlyEntriesProvider(selectedMonth));
+    final customRange = ref.watch(reportCustomDateRangeProvider);
     final settings = ref.watch(settingsProvider);
     final theme = Theme.of(context);
 
-    final monthStr = DateFormat('MMMM yyyy').format(selectedMonth);
+    // Watch relevant provider based on scope
+    final AsyncValue<List<TimeEntry>> entriesAsync = scope == ReportScope.month
+        ? ref.watch(monthlyEntriesProvider(selectedMonth))
+        : ref.watch(allEntriesProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -50,13 +68,40 @@ class ReportsScreen extends ConsumerWidget {
         centerTitle: true,
       ),
       body: entriesAsync.when(
-        data: (allEntries) {
-          // Filter entries for the selected month specifically (allEntries from provider is today-reactive, let's filter)
-          final entries = allEntries
-              .where((e) => e.date.year == selectedMonth.year && e.date.month == selectedMonth.month)
-              .toList();
+        data: (rawEntries) {
+          // Filter entries depending on active scope
+          List<TimeEntry> entries;
+          String scopeLabel;
+          String filePrefix;
 
-          final totalDays = _getDaysInMonth(selectedMonth);
+          if (scope == ReportScope.month) {
+            entries = rawEntries
+                .where((e) => e.date.year == selectedMonth.year && e.date.month == selectedMonth.month)
+                .toList();
+            scopeLabel = DateFormat('MMMM yyyy').format(selectedMonth);
+            filePrefix = 'time_report_${DateFormat('yyyy_MM').format(selectedMonth)}';
+          } else if (scope == ReportScope.allTime) {
+            entries = List<TimeEntry>.from(rawEntries);
+            scopeLabel = 'All Records (${entries.length} entries)';
+            filePrefix = 'time_report_all_records';
+          } else {
+            final start = customRange?.start ?? DateTime(selectedMonth.year, selectedMonth.month, 1);
+            final end = customRange?.end ?? DateTime(selectedMonth.year, selectedMonth.month, selectedMonth.day);
+            final startMidnight = DateTime(start.year, start.month, start.day);
+            final endMidnight = DateTime(end.year, end.month, end.day, 23, 59, 59);
+
+            entries = rawEntries.where((e) {
+              return e.date.isAfter(startMidnight.subtract(const Duration(seconds: 1))) &&
+                  e.date.isBefore(endMidnight.add(const Duration(seconds: 1)));
+            }).toList();
+            scopeLabel = '${DateFormat('MMM d, yyyy').format(start)} - ${DateFormat('MMM d, yyyy').format(end)}';
+            filePrefix = 'time_report_${DateFormat('yyyyMMdd').format(start)}_${DateFormat('yyyyMMdd').format(end)}';
+          }
+
+          // Sort entries chronologically for display
+          entries.sort((a, b) => a.date.compareTo(b.date));
+
+          final totalDays = scope == ReportScope.month ? _getDaysInMonth(selectedMonth) : entries.length;
 
           // Salary & Attendance calculations
           Duration monthlyAttendance = Duration.zero;
@@ -167,7 +212,7 @@ class ReportsScreen extends ConsumerWidget {
           }
 
           final workingDays = presentCount + wfhCount;
-          final expectedMonthHours = workingDays * settings.expectedWorkingHours;
+          final expectedHours = workingDays * settings.expectedWorkingHours;
 
           // Average times
           TimeOfDay? avgStartTime;
@@ -184,30 +229,155 @@ class ReportsScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Month Switcher Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: () {
-                      ref.read(selectedReportMonthProvider.notifier).state =
-                          DateTime(selectedMonth.year, selectedMonth.month - 1, 1);
-                    },
+              // Scope Selector (Month vs All Records vs Custom Range)
+              SegmentedButton<ReportScope>(
+                segments: const [
+                  ButtonSegment(
+                    value: ReportScope.month,
+                    label: Text('Monthly'),
+                    icon: Icon(Icons.calendar_month, size: 18),
                   ),
-                  Text(
-                    monthStr,
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ButtonSegment(
+                    value: ReportScope.allTime,
+                    label: Text('All Records'),
+                    icon: Icon(Icons.all_inbox, size: 18),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: () {
-                      ref.read(selectedReportMonthProvider.notifier).state =
-                          DateTime(selectedMonth.year, selectedMonth.month + 1, 1);
-                    },
+                  ButtonSegment(
+                    value: ReportScope.customRange,
+                    label: Text('Range'),
+                    icon: Icon(Icons.date_range, size: 18),
                   ),
                 ],
+                selected: {scope},
+                onSelectionChanged: (newSelection) {
+                  ref.read(reportScopeProvider.notifier).state = newSelection.first;
+                },
               ),
+              const SizedBox(height: 16),
+
+              // Period Switcher Header
+              if (scope == ReportScope.month)
+                Card(
+                  elevation: 0,
+                  color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.chevron_left),
+                          tooltip: 'Previous month',
+                          onPressed: () {
+                            final prevMonth = DateTime(selectedMonth.year, selectedMonth.month - 1, 1);
+                            ref.read(selectedReportMonthProvider.notifier).state = prevMonth;
+                            ref.read(selectedMonthProvider.notifier).state = prevMonth;
+                          },
+                        ),
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedMonth,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2035),
+                              helpText: 'SELECT REPORT MONTH',
+                            );
+                            if (picked != null) {
+                              final newMonth = DateTime(picked.year, picked.month, 1);
+                              ref.read(selectedReportMonthProvider.notifier).state = newMonth;
+                              ref.read(selectedMonthProvider.notifier).state = newMonth;
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            child: Row(
+                              children: [
+                                Text(
+                                  scopeLabel,
+                                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(Icons.arrow_drop_down, size: 20),
+                              ],
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.chevron_right),
+                          tooltip: 'Next month',
+                          onPressed: () {
+                            final nextMonth = DateTime(selectedMonth.year, selectedMonth.month + 1, 1);
+                            ref.read(selectedReportMonthProvider.notifier).state = nextMonth;
+                            ref.read(selectedMonthProvider.notifier).state = nextMonth;
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (scope == ReportScope.customRange)
+                Card(
+                  elevation: 0,
+                  color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            scopeLabel,
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final picked = await showDateRangePicker(
+                              context: context,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2035),
+                              initialDateRange: customRange ??
+                                  DateTimeRange(
+                                    start: DateTime(selectedMonth.year, selectedMonth.month, 1),
+                                    end: DateTime.now(),
+                                  ),
+                            );
+                            if (picked != null) {
+                              ref.read(reportCustomDateRangeProvider.notifier).state = picked;
+                            }
+                          },
+                          icon: const Icon(Icons.date_range, size: 18),
+                          label: const Text('Change Range'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Card(
+                  elevation: 0,
+                  color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Icon(Icons.all_inbox_rounded, color: theme.colorScheme.primary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'All-Time History: ${entries.length} records across all dates',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
 
               // Export actions
@@ -216,38 +386,65 @@ class ReportsScreen extends ConsumerWidget {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        final csvBytes = await ReportService.generateCSV(entries);
-                        await saver.saveAndShareFile(
+                        final filename = '$filePrefix.csv';
+                        const mimeType = 'text/csv';
+                        final csvBytes = await ReportService.generateCSV(
+                          entries,
+                          title: 'Time Tracking Report - $scopeLabel',
+                        );
+                        final location = await saver.saveAndShareFile(
                           csvBytes,
-                          'time_report_${DateFormat('yyyy_MM').format(selectedMonth)}.csv',
-                          'text/csv',
+                          filename,
+                          mimeType,
                         );
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('CSV Report downloaded successfully.')),
+                        await _showExportSuccessDialog(
+                          context,
+                          filename: filename,
+                          location: location,
+                          recordCount: entries.length,
+                          isPdf: false,
+                          bytes: csvBytes,
+                          mimeType: mimeType,
                         );
                       },
                       icon: const Icon(Icons.file_download_outlined),
-                      label: const Text('Export CSV'),
+                      label: Text('Export CSV (${entries.length})'),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () async {
-                        final pdfBytes = await ReportService.generatePDF(entries, selectedMonth, settings);
-                        await saver.saveAndShareFile(
+                        final filename = '$filePrefix.pdf';
+                        const mimeType = 'application/pdf';
+                        final pdfBytes = await ReportService.generatePDF(
+                          entries,
+                          scope == ReportScope.month ? selectedMonth : null,
+                          settings,
+                          title: scope == ReportScope.month
+                              ? 'Monthly Time Tracking Report'
+                              : 'Time Tracking Report',
+                          periodLabel: scopeLabel,
+                        );
+                        final location = await saver.saveAndShareFile(
                           pdfBytes,
-                          'time_report_${DateFormat('yyyy_MM').format(selectedMonth)}.pdf',
-                          'application/pdf',
+                          filename,
+                          mimeType,
                         );
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('PDF Report generated and downloaded.')),
+                        await _showExportSuccessDialog(
+                          context,
+                          filename: filename,
+                          location: location,
+                          recordCount: entries.length,
+                          isPdf: true,
+                          bytes: pdfBytes,
+                          mimeType: mimeType,
                         );
                       },
                       icon: const Icon(Icons.picture_as_pdf_outlined),
-                      label: const Text('Export PDF'),
+                      label: Text('Export PDF (${entries.length})'),
                     ),
                   ),
                 ],
@@ -289,7 +486,7 @@ class ReportsScreen extends ConsumerWidget {
                       Text('WORKING HOURS', style: theme.textTheme.labelMedium),
                       const SizedBox(height: 16),
                       _buildRowDetail(theme, 'Total Hours Worked', _formatDuration(totalDuration)),
-                      _buildRowDetail(theme, 'Expected Hours', '${expectedMonthHours.toStringAsFixed(1)} hours'),
+                      _buildRowDetail(theme, 'Expected Hours', '${expectedHours.toStringAsFixed(1)} hours'),
                       _buildRowDetail(theme, 'Average / Day', _formatDuration(averageDuration)),
                     ],
                   ),
@@ -356,7 +553,9 @@ class ReportsScreen extends ConsumerWidget {
                           height: 200,
                           alignment: Alignment.center,
                           child: Text(
-                            'No time entries for this month.',
+                            scope == ReportScope.month
+                                ? 'No time entries for this month.'
+                                : 'No time entries for this period.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.onSurface.withOpacity(0.4),
                               fontStyle: FontStyle.italic,
@@ -369,7 +568,9 @@ class ReportsScreen extends ConsumerWidget {
                           child: Padding(
                             padding: const EdgeInsets.only(top: 16, right: 16),
                             child: SizedBox(
-                              width: 600,
+                              width: scope == ReportScope.month
+                                  ? 600
+                                  : (entries.length * 35.0).clamp(400.0, 1500.0),
                               height: 200,
                               child: BarChart(
                                 BarChartData(
@@ -399,8 +600,20 @@ class ReportsScreen extends ConsumerWidget {
                                           }
                                         }
 
+                                        String labelText;
+                                        if (scope == ReportScope.month) {
+                                          labelText = 'Day ${group.x.toInt()}\n';
+                                        } else {
+                                          final idx = group.x.toInt() - 1;
+                                          if (idx >= 0 && idx < entries.length) {
+                                            labelText = '${DateFormat('MMM d').format(entries[idx].date)}\n';
+                                          } else {
+                                            labelText = 'Entry ${group.x.toInt()}\n';
+                                          }
+                                        }
+
                                         return BarTooltipItem(
-                                          'Day ${group.x.toInt()}\n',
+                                          labelText,
                                           TextStyle(
                                             color: theme.colorScheme.onInverseSurface,
                                             fontWeight: FontWeight.bold,
@@ -430,13 +643,22 @@ class ReportsScreen extends ConsumerWidget {
                                       sideTitles: SideTitles(
                                         showTitles: true,
                                         getTitlesWidget: (val, meta) {
-                                          if (val.toInt() <= 0 || val.toInt() > totalDays) {
+                                          if (scope == ReportScope.month) {
+                                            if (val.toInt() <= 0 || val.toInt() > totalDays) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            if (val.toInt() % 5 == 0 || val.toInt() == 1 || val.toInt() == totalDays) {
+                                              return Text('${val.toInt()}', style: const TextStyle(fontSize: 8));
+                                            }
+                                            return const SizedBox.shrink();
+                                          } else {
+                                            final idx = val.toInt() - 1;
+                                            if (idx >= 0 && idx < entries.length) {
+                                              return Text(DateFormat('d/M').format(entries[idx].date),
+                                                  style: const TextStyle(fontSize: 8));
+                                            }
                                             return const SizedBox.shrink();
                                           }
-                                          if (val.toInt() % 5 == 0 || val.toInt() == 1 || val.toInt() == totalDays) {
-                                            return Text('${val.toInt()}', style: const TextStyle(fontSize: 8));
-                                          }
-                                          return const SizedBox.shrink();
                                         },
                                       ),
                                     ),
@@ -464,26 +686,42 @@ class ReportsScreen extends ConsumerWidget {
                                   ),
                                   gridData: const FlGridData(show: false),
                                   borderData: FlBorderData(show: false),
-                                  barGroups: List.generate(totalDays, (i) {
-                                    final day = i + 1;
-                                    double valY = 0.0;
-                                    try {
-                                      final dayEntry = entries.firstWhere((e) => e.date.day == day);
-                                      valY = TimeCalculator.calculateWorkingDuration(dayEntry).inMinutes / 60.0;
-                                    } catch (_) {}
+                                  barGroups: scope == ReportScope.month
+                                      ? List.generate(totalDays, (i) {
+                                          final day = i + 1;
+                                          double valY = 0.0;
+                                          try {
+                                            final dayEntry = entries.firstWhere((e) => e.date.day == day);
+                                            valY = TimeCalculator.calculateWorkingDuration(dayEntry).inMinutes / 60.0;
+                                          } catch (_) {}
 
-                                    return BarChartGroupData(
-                                      x: day,
-                                      barRods: [
-                                        BarChartRodData(
-                                          toY: valY,
-                                          color: theme.colorScheme.primary,
-                                          width: 8,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                      ],
-                                    );
-                                  }),
+                                          return BarChartGroupData(
+                                            x: day,
+                                            barRods: [
+                                              BarChartRodData(
+                                                toY: valY,
+                                                color: theme.colorScheme.primary,
+                                                width: 8,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                            ],
+                                          );
+                                        })
+                                      : List.generate(entries.length, (i) {
+                                          final entry = entries[i];
+                                          final valY = TimeCalculator.calculateWorkingDuration(entry).inMinutes / 60.0;
+                                          return BarChartGroupData(
+                                            x: i + 1,
+                                            barRods: [
+                                              BarChartRodData(
+                                                toY: valY,
+                                                color: theme.colorScheme.primary,
+                                                width: 10,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                            ],
+                                          );
+                                        }),
                                 ),
                               ),
                             ),
@@ -522,6 +760,140 @@ class ReportsScreen extends ConsumerWidget {
                             ? '${_formatDuration(shortestDuration)} (${DateFormat('MMM d').format(shortestEntry.date)})'
                             : '--:--',
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 5. Daily Activity Logs Section (List of records included in this report)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('ACTIVITY LOG (${entries.length} RECORDS)', style: theme.textTheme.labelMedium),
+                          if (entries.isNotEmpty)
+                            Text(
+                              'Tap record to edit',
+                              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (entries.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: Text(
+                              'No activity logs recorded for this period.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: entries.length,
+                          separatorBuilder: (context, index) => const Divider(height: 1),
+                          itemBuilder: (ctx, i) {
+                            final entry = entries[i];
+                            final netDuration = TimeCalculator.calculateWorkingDuration(entry);
+                            final formattedNet = _formatDuration(netDuration);
+                            final inTime = entry.startTime != null ? DateFormat('hh:mm a').format(entry.startTime!) : '--:--';
+                            final outTime = entry.endTime != null ? DateFormat('hh:mm a').format(entry.endTime!) : '--:--';
+
+                            Color badgeColor;
+                            switch (entry.workType) {
+                              case WorkType.office:
+                                badgeColor = Colors.blue;
+                                break;
+                              case WorkType.wfh:
+                                badgeColor = Colors.teal;
+                                break;
+                              case WorkType.leave:
+                                badgeColor = Colors.orange;
+                                break;
+                              case WorkType.holiday:
+                                badgeColor = Colors.purple;
+                                break;
+                            }
+
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              onTap: () async {
+                                final res = await Navigator.of(context).push<bool>(
+                                  MaterialPageRoute(
+                                    builder: (_) => DailyDetailScreen(date: entry.date),
+                                  ),
+                                );
+                                if (res == true) {
+                                  ref.invalidate(monthlyEntriesProvider);
+                                  ref.invalidate(allEntriesProvider);
+                                }
+                              },
+                              leading: Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: badgeColor.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: badgeColor.withOpacity(0.4)),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  DateFormat('d\nMMM').format(entry.date),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: badgeColor,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ),
+                              title: Row(
+                                children: [
+                                  Text(
+                                    DateFormat('EEEE').format(entry.date),
+                                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: badgeColor.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      entry.workType.name.toUpperCase(),
+                                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: badgeColor),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: Text(
+                                'In: $inTime  •  Out: $outTime${entry.notes != null && entry.notes!.isNotEmpty ? '\n${entry.notes}' : ''}',
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                              ),
+                              trailing: Text(
+                                formattedNet,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -591,4 +963,105 @@ class ReportsScreen extends ConsumerWidget {
       return '0h';
     }
   }
+
+  Future<void> _showExportSuccessDialog(
+    BuildContext context, {
+    required String filename,
+    required String location,
+    required int recordCount,
+    required bool isPdf,
+    required Uint8List bytes,
+    required String mimeType,
+  }) async {
+    final theme = Theme.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.check_circle_outline, color: Colors.green, size: 36),
+        ),
+        title: Text(
+          isPdf ? 'PDF Report Ready' : 'CSV Report Ready',
+          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your report has been generated and saved.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(isPdf ? Icons.picture_as_pdf : Icons.table_chart, size: 16, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          filename,
+                          style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('• Records: $recordCount entries included', style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 4),
+                  Text('• Saved to: $location', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.7))),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          OutlinedButton.icon(
+            onPressed: () async {
+              await saver.shareDownloadedFile(
+                location,
+                subject: isPdf ? 'Time Tracking PDF Report' : 'Time Tracking CSV Report',
+                text: 'Time Tracking Report: $filename ($recordCount entries)',
+                bytes: bytes,
+                filename: filename,
+              );
+            },
+            icon: const Icon(Icons.share_outlined, size: 16),
+            label: const Text('Share'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              await saver.openDownloadedFile(
+                location,
+                mimeType: mimeType,
+                bytes: bytes,
+              );
+            },
+            icon: const Icon(Icons.open_in_new, size: 16),
+            label: const Text('Open'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
 }
+

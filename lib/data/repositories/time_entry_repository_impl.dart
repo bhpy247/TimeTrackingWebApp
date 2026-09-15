@@ -163,23 +163,38 @@ class TimeEntryRepositoryImpl implements TimeEntryRepository {
   @override
   Future<void> saveEntry(entity.TimeEntry entry) async {
     await _db.transaction(() async {
-      final companion = TimeEntriesCompanion(
-        id: Value(entry.id!),
-        date: Value(entry.date),
-        startTime: Value(entry.startTime),
-        endTime: Value(entry.endTime),
-        workType: Value(entry.workType),
-        notes: Value(entry.notes),
-        createdAt: Value(entry.createdAt),
-        updatedAt: Value(DateTime.now()),
-      );
-      await _db.update(_db.timeEntries).replace(companion);
+      int entryId;
+      if (entry.id == null) {
+        final companion = TimeEntriesCompanion.insert(
+          date: entry.date,
+          startTime: Value(entry.startTime),
+          endTime: Value(entry.endTime),
+          workType: entry.workType,
+          notes: Value(entry.notes),
+          createdAt: entry.createdAt,
+          updatedAt: DateTime.now(),
+        );
+        entryId = await _db.into(_db.timeEntries).insert(companion);
+      } else {
+        entryId = entry.id!;
+        final companion = TimeEntriesCompanion(
+          id: Value(entry.id!),
+          date: Value(entry.date),
+          startTime: Value(entry.startTime),
+          endTime: Value(entry.endTime),
+          workType: Value(entry.workType),
+          notes: Value(entry.notes),
+          createdAt: Value(entry.createdAt),
+          updatedAt: Value(DateTime.now()),
+        );
+        await _db.update(_db.timeEntries).replace(companion);
+      }
 
-      await (_db.delete(_db.breakEntries)..where((b) => b.timeEntryId.equals(entry.id!))).go();
+      await (_db.delete(_db.breakEntries)..where((b) => b.timeEntryId.equals(entryId))).go();
 
       for (final b in entry.breaks) {
         final breakCompanion = BreakEntriesCompanion.insert(
-          timeEntryId: entry.id!,
+          timeEntryId: entryId,
           startTime: b.startTime,
           endTime: Value(b.endTime),
           createdAt: b.createdAt,

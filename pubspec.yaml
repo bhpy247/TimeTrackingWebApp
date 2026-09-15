@@ -45,6 +45,9 @@ dependencies:
   csv: ^8.0.0
   intl: ^0.20.3
   flutter_local_notifications: ^22.3.0
+  open_file_plus: ^3.4.1+1
+  share_plus: ^13.3.0
+  printing: ^5.15.0
 
 dev_dependencies:
   flutter_test:

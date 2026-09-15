@@ -185,3 +185,11 @@ final monthlyEntriesProvider = FutureProvider.family<List<TimeEntry>, DateTime>(
 
 // Alias for backwards compatibility
 final monthlyCalendarEntriesProvider = monthlyEntriesProvider;
+
+// Provider for fetching all time entries across all dates
+final allEntriesProvider = FutureProvider<List<TimeEntry>>((ref) {
+  final repo = ref.watch(timeEntryRepositoryProvider);
+  ref.watch(todayTimeEntryProvider); // Automatically reload when today's entry changes
+  return repo.getAllEntries();
+});
+

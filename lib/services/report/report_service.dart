@@ -3,6 +3,7 @@ import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../../domain/entities/time_entry.dart';
 import '../../domain/entities/user_settings.dart';
 import '../../domain/usecases/time_calculator.dart';
@@ -10,9 +11,21 @@ import '../../domain/usecases/time_calculator.dart';
 class ReportService {
   ReportService._();
 
-  static Future<Uint8List> generateCSV(List<TimeEntry> entries) async {
+  static Future<Uint8List> generateCSV(
+    List<TimeEntry> entries, {
+    String? title,
+  }) async {
+    final sortedEntries = List<TimeEntry>.from(entries)
+      ..sort((a, b) => b.date.compareTo(a.date));
+
     final List<List<dynamic>> rows = [];
     
+    // Optional Title header
+    if (title != null && title.isNotEmpty) {
+      rows.add([title]);
+      rows.add([]);
+    }
+
     // Header
     rows.add([
       'Date',
@@ -25,7 +38,7 @@ class ReportService {
       'Notes'
     ]);
 
-    for (final entry in entries) {
+    for (final entry in sortedEntries) {
       final working = TimeCalculator.calculateWorkingDuration(entry);
       final breaksDuration = TimeCalculator.calculateBreakDuration(entry);
       
@@ -54,21 +67,28 @@ class ReportService {
 
   static Future<Uint8List> generatePDF(
     List<TimeEntry> entries,
-    DateTime month,
-    UserSettings settings,
-  ) async {
+    DateTime? month,
+    UserSettings settings, {
+    String? title,
+    String? periodLabel,
+  }) async {
     final pdf = pw.Document();
+
+    final sortedEntries = List<TimeEntry>.from(entries)
+      ..sort((a, b) => b.date.compareTo(a.date));
     
-    final monthName = DateFormat('MMMM yyyy').format(month);
-    final totalDuration = TimeCalculator.calculateMonthlyTotal(entries);
-    final averageDuration = TimeCalculator.calculateMonthlyAverage(entries);
+    final effectiveTitle = title ?? (month != null ? 'Monthly Time Tracking Report' : 'Time Tracking Report');
+    final effectivePeriod = periodLabel ?? (month != null ? DateFormat('MMMM yyyy').format(month) : 'All Records (${sortedEntries.length} entries)');
+    
+    final totalDuration = TimeCalculator.calculateMonthlyTotal(sortedEntries);
+    final averageDuration = TimeCalculator.calculateMonthlyAverage(sortedEntries);
 
     int presentCount = 0;
     int wfhCount = 0;
     int leaveCount = 0;
     int holidayCount = 0;
 
-    for (final entry in entries) {
+    for (final entry in sortedEntries) {
       switch (entry.workType) {
         case WorkType.office:
           presentCount++;
@@ -89,20 +109,38 @@ class ReportService {
     final totalHoursStr = '${totalDuration.inHours}h ${totalDuration.inMinutes % 60}m';
     final averageHoursStr = '${averageDuration.inHours}h ${averageDuration.inMinutes % 60}m';
 
+    // Load Unicode fonts (Roboto) to support all currency symbols and Unicode characters
+    pw.Font? ttfRegular;
+    pw.Font? ttfBold;
+    try {
+      ttfRegular = await PdfGoogleFonts.robotoRegular();
+      ttfBold = await PdfGoogleFonts.robotoBold();
+    } catch (_) {
+      // Fallback if font network request is unavailable
+    }
+
+    final pageTheme = (ttfRegular != null && ttfBold != null)
+        ? pw.ThemeData.withFont(
+            base: ttfRegular,
+            bold: ttfBold,
+          )
+        : null;
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
+        theme: pageTheme,
         build: (pw.Context context) {
           return [
-            // Title
+            // Title Header
             pw.Header(
               level: 0,
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('Monthly Time Tracking Report', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
-                  pw.Text(monthName, style: pw.TextStyle(fontSize: 16, color: PdfColors.grey700)),
+                  pw.Text(effectiveTitle, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                  pw.Text(effectivePeriod, style: const pw.TextStyle(fontSize: 13, color: PdfColors.grey700)),
                 ],
               ),
             ),
@@ -127,44 +165,51 @@ class ReportService {
                 _buildPdfStatCard('Leave Days', '$leaveCount days'),
                 _buildPdfStatCard('Holidays', '$holidayCount days'),
                 _buildPdfStatCard('Expected / Day', '${settings.expectedWorkingHours}h'),
-                _buildPdfStatCard('Expected Month', '${settings.expectedWorkingHours * workingDaysCount}h'),
+                _buildPdfStatCard('Total Expected', '${settings.expectedWorkingHours * workingDaysCount}h'),
               ],
             ),
             pw.SizedBox(height: 24),
 
             // Daily Logs Table
-            pw.Text('DAILY ACTIVITY LOG', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+            pw.Text('DAILY ACTIVITY LOG (${sortedEntries.length} RECORDS)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
             pw.SizedBox(height: 8),
-            pw.TableHelper.fromTextArray(
-              headers: ['Date', 'Type', 'Clock In', 'Clock Out', 'Breaks', 'Net Duration', 'Notes'],
-              data: entries.map((entry) {
-                final dateStr = DateFormat('MMM d (EEE)').format(entry.date);
-                final typeStr = entry.workType.name.toUpperCase();
-                final startStr = entry.startTime != null ? DateFormat('hh:mm a').format(entry.startTime!) : '--:--';
-                final endStr = entry.endTime != null ? DateFormat('hh:mm a').format(entry.endTime!) : '--:--';
-                
-                final breaksDuration = TimeCalculator.calculateBreakDuration(entry);
-                final netDuration = TimeCalculator.calculateWorkingDuration(entry);
+            if (sortedEntries.isEmpty)
+              pw.Container(
+                padding: const pw.EdgeInsets.all(16),
+                alignment: pw.Alignment.center,
+                child: pw.Text('No time entries found for this report period.', style: const pw.TextStyle(color: PdfColors.grey600)),
+              )
+            else
+              pw.TableHelper.fromTextArray(
+                headers: ['Date', 'Type', 'Clock In', 'Clock Out', 'Breaks', 'Net Duration', 'Notes'],
+                data: sortedEntries.map((entry) {
+                  final dateStr = DateFormat('MMM d, yyyy (EEE)').format(entry.date);
+                  final typeStr = entry.workType.name.toUpperCase();
+                  final startStr = entry.startTime != null ? DateFormat('hh:mm a').format(entry.startTime!) : '--:--';
+                  final endStr = entry.endTime != null ? DateFormat('hh:mm a').format(entry.endTime!) : '--:--';
+                  
+                  final breaksDuration = TimeCalculator.calculateBreakDuration(entry);
+                  final netDuration = TimeCalculator.calculateWorkingDuration(entry);
 
-                final breakStr = breaksDuration > Duration.zero ? '${breaksDuration.inMinutes}m' : '-';
-                final netStr = netDuration > Duration.zero ? '${netDuration.inHours}h ${netDuration.inMinutes % 60}m' : '-';
+                  final breakStr = breaksDuration > Duration.zero ? '${breaksDuration.inMinutes}m' : '-';
+                  final netStr = netDuration > Duration.zero ? '${netDuration.inHours}h ${netDuration.inMinutes % 60}m' : '-';
 
-                return [
-                  dateStr,
-                  typeStr,
-                  startStr,
-                  endStr,
-                  breakStr,
-                  netStr,
-                  entry.notes ?? '',
-                ];
-              }).toList(),
-              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-              cellStyle: const pw.TextStyle(fontSize: 8),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
-              rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200, width: 0.5))),
-            ),
+                  return [
+                    dateStr,
+                    typeStr,
+                    startStr,
+                    endStr,
+                    breakStr,
+                    netStr,
+                    entry.notes ?? '',
+                  ];
+                }).toList(),
+                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
+                cellStyle: const pw.TextStyle(fontSize: 8),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
+                rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200, width: 0.5))),
+              ),
           ];
         },
       ),
