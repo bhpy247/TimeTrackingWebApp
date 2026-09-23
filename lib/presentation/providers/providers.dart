@@ -162,6 +162,67 @@ class TimeTrackingNotifier extends StateNotifier<AsyncValue<TimeEntry?>> {
       loadTodayEntry();
     }
   }
+
+  Future<void> updateWorkType(WorkType workType) async {
+    final current = state.value;
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    try {
+      state = const AsyncValue.loading();
+      if (current != null) {
+        final updated = current.copyWith(workType: workType);
+        await _repository.saveEntry(updated);
+        state = AsyncValue.data(updated);
+      } else {
+        final newEntry = TimeEntry(
+          date: todayMidnight,
+          workType: workType,
+          createdAt: now,
+          updatedAt: now,
+        );
+        await _repository.saveEntry(newEntry);
+        state = AsyncValue.data(newEntry);
+      }
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+      loadTodayEntry();
+    }
+  }
+
+  Future<void> markDayOff(WorkType workType) async {
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    try {
+      state = const AsyncValue.loading();
+      final existing = await _repository.getTodayEntry();
+      final entry = TimeEntry(
+        id: existing?.id,
+        date: todayMidnight,
+        workType: workType,
+        notes: existing?.notes,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      );
+      await _repository.saveEntry(entry);
+      state = AsyncValue.data(entry);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+      loadTodayEntry();
+    }
+  }
+
+  Future<void> deleteTodayEntry() async {
+    final current = state.value;
+    if (current?.id == null) return;
+    try {
+      state = const AsyncValue.loading();
+      await _repository.deleteEntry(current!.id!);
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+      loadTodayEntry();
+    }
+  }
 }
 
 // Provider for fetching current month's entries to update monthly summary

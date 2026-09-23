@@ -161,18 +161,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final isClockedIn = entry != null && entry.startTime != null;
     final isClockedOut = entry != null && entry.endTime != null;
     final isOnBreak = entry != null && entry.isOnBreak;
+    final isUnclockedDayOff = entry != null &&
+        entry.startTime == null &&
+        (entry.workType == WorkType.halfDay || entry.workType == WorkType.leave || entry.workType == WorkType.holiday);
 
     String statusText = 'NOT CLOCKED IN';
     Color statusColor = Colors.grey;
     if (isClockedOut) {
-      statusText = 'CLOCKED OUT';
-      statusColor = Colors.teal;
+      statusText = entry.workType == WorkType.halfDay ? 'HALF DAY COMPLETED' : 'CLOCKED OUT';
+      statusColor = entry.workType == WorkType.halfDay ? Colors.amber.shade800 : Colors.teal;
     } else if (isOnBreak) {
       statusText = 'ON BREAK';
       statusColor = Colors.amber;
     } else if (isClockedIn) {
-      statusText = 'WORKING';
-      statusColor = theme.colorScheme.primary;
+      statusText = entry.workType == WorkType.halfDay ? 'HALF DAY WORKING' : 'WORKING';
+      statusColor = entry.workType == WorkType.halfDay ? Colors.amber.shade800 : theme.colorScheme.primary;
+    } else if (isUnclockedDayOff) {
+      statusText = entry.workType == WorkType.halfDay ? 'HALF DAY OFF' : entry.workType.name.toUpperCase();
+      statusColor = Colors.amber.shade800;
     }
 
     return Card(
@@ -188,13 +194,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   style: theme.textTheme.labelMedium?.copyWith(
                     letterSpacing: 1.2,
                     fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                   ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.15),
+                    color: statusColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -207,10 +213,75 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
 
-            // Live working duration timer
-            if (entry != null && entry.startTime != null)
+            // Mode switcher when clocked in or completed
+            if (isClockedIn || isClockedOut) ...[
+              const SizedBox(height: 16),
+              _buildWorkTypeChipSelector(theme, entry.workType),
+            ],
+
+            const SizedBox(height: 20),
+
+            // Live working duration timer (or off message)
+            if (isUnclockedDayOff) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.hourglass_bottom, color: Colors.amber.shade800, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Marked as Half Day Off',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Target attendance: ${(expectedHours / 2.0).toStringAsFixed(1)}h work. Half-day deduction applies if unworked.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        ref.read(todayTimeEntryProvider.notifier).clockIn(workType: WorkType.halfDay);
+                      },
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('CLOCK IN NOW'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber.shade800,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton(
+                    onPressed: () {
+                      ref.read(todayTimeEntryProvider.notifier).deleteTodayEntry();
+                    },
+                    child: const Text('Reset'),
+                  ),
+                ],
+              ),
+            ] else if (isClockedIn) ...[
               _LiveDurationText(
                 entry: entry,
                 formatDuration: _formatDuration,
@@ -218,20 +289,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   fontWeight: FontWeight.bold,
                   letterSpacing: -0.5,
                 ),
-              )
-            else
+              ),
+              // Live Target Progress Indicator
+              _LiveTargetProgressCard(
+                entry: entry,
+                expectedWorkingHours: expectedHours,
+              ),
+            ] else if (isClockedOut) ...[
+              _LiveDurationText(
+                entry: entry,
+                formatDuration: _formatDuration,
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              _LiveTargetProgressCard(
+                entry: entry,
+                expectedWorkingHours: expectedHours,
+              ),
+            ] else ...[
               Text(
                 '00h 00m 00s',
                 style: theme.textTheme.displaySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.3),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                   fontWeight: FontWeight.bold,
                 ),
               ),
+            ],
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // Controls
-            if (!isClockedIn) ...[
+            if (!isClockedIn && !isUnclockedDayOff) ...[
               // Work type selection before Clock In
               SegmentedButton<WorkType>(
                 segments: const [
@@ -264,10 +354,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ref.read(todayTimeEntryProvider.notifier).clockIn(workType: _selectedWorkType);
                 },
                 icon: const Icon(Icons.play_arrow),
-                label: const Text('CLOCK IN'),
-                style: theme.elevatedButtonTheme.style,
+                label: Text(_selectedWorkType == WorkType.halfDay ? 'CLOCK IN (HALF DAY)' : 'CLOCK IN'),
+                style: _selectedWorkType == WorkType.halfDay
+                    ? ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber.shade800,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 52),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      )
+                    : theme.elevatedButtonTheme.style,
               ),
-            ] else if (!isClockedOut) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () {
+                  ref.read(todayTimeEntryProvider.notifier).markDayOff(WorkType.halfDay);
+                },
+                icon: Icon(Icons.hourglass_bottom, size: 16, color: Colors.amber.shade900),
+                label: Text(
+                  'Mark Today as Half Day Off (No Clock-In)',
+                  style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.amber.shade300),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ] else if (!isClockedOut && !isUnclockedDayOff) ...[
               Row(
                 children: [
                   Expanded(
@@ -311,15 +423,75 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 ],
               ),
-            ] else ...[
+            ] else if (isClockedOut) ...[
               // Already Clocked Out today
               Text(
-                'You completed your work for today! 🎉',
+                entry.workType == WorkType.halfDay
+                    ? 'You completed your Half Day work! 🏖️'
+                    : 'You completed your work for today! 🎉',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWorkTypeChipSelector(ThemeData theme, WorkType currentType) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildModeChip(theme, WorkType.office, 'Office', Icons.business, currentType == WorkType.office),
+        const SizedBox(width: 8),
+        _buildModeChip(theme, WorkType.wfh, 'WFH', Icons.home_outlined, currentType == WorkType.wfh),
+        const SizedBox(width: 8),
+        _buildModeChip(theme, WorkType.halfDay, 'Half Day', Icons.hourglass_bottom, currentType == WorkType.halfDay),
+      ],
+    );
+  }
+
+  Widget _buildModeChip(ThemeData theme, WorkType type, String label, IconData icon, bool isSelected) {
+    final activeColor = type == WorkType.halfDay ? Colors.amber.shade800 : theme.colorScheme.primary;
+    return InkWell(
+      onTap: isSelected
+          ? null
+          : () {
+              ref.read(todayTimeEntryProvider.notifier).updateWorkType(type);
+            },
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (type == WorkType.halfDay ? Colors.amber.shade100 : theme.colorScheme.primaryContainer.withValues(alpha: 0.5))
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? activeColor : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: isSelected ? 1.5 : 1.0,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: isSelected ? activeColor : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? activeColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
           ],
         ),
       ),
@@ -817,6 +989,164 @@ class _LiveHeaderClockState extends State<LiveHeaderClock> {
         fontWeight: FontWeight.w600,
         color: theme.colorScheme.primary,
         fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+  }
+}
+
+class _LiveTargetProgressCard extends StatefulWidget {
+  final TimeEntry entry;
+  final double expectedWorkingHours;
+
+  const _LiveTargetProgressCard({
+    required this.entry,
+    required this.expectedWorkingHours,
+  });
+
+  @override
+  State<_LiveTargetProgressCard> createState() => _LiveTargetProgressCardState();
+}
+
+class _LiveTargetProgressCardState extends State<_LiveTargetProgressCard> {
+  Timer? _timer;
+  Duration _currentWorking = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _update();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _update());
+  }
+
+  @override
+  void didUpdateWidget(covariant _LiveTargetProgressCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _update();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _update() {
+    if (mounted) {
+      setState(() {
+        _currentWorking = TimeCalculator.calculateWorkingDuration(widget.entry);
+      });
+    }
+  }
+
+  String _formatHhMm(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    return '${h}h ${m}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isHalfDay = widget.entry.workType == WorkType.halfDay;
+    final effectiveHours = isHalfDay ? widget.expectedWorkingHours / 2.0 : widget.expectedWorkingHours;
+    final targetDuration = Duration(milliseconds: (effectiveHours * 3600 * 1000).toInt());
+
+    final progress = targetDuration.inSeconds > 0
+        ? (_currentWorking.inSeconds / targetDuration.inSeconds).clamp(0.0, 1.0)
+        : 0.0;
+    final isCompleted = _currentWorking >= targetDuration;
+    final remaining = targetDuration > _currentWorking ? targetDuration - _currentWorking : Duration.zero;
+    final overtime = _currentWorking > targetDuration ? _currentWorking - targetDuration : Duration.zero;
+
+    final barColor = isHalfDay
+        ? (isCompleted ? Colors.green : Colors.amber.shade700)
+        : (isCompleted ? Colors.green : theme.colorScheme.primary);
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isHalfDay
+            ? Colors.amber.withValues(alpha: 0.08)
+            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isHalfDay
+              ? Colors.amber.withValues(alpha: 0.3)
+              : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isHalfDay ? Icons.hourglass_bottom : Icons.timer_outlined,
+                    size: 16,
+                    color: isHalfDay ? Colors.amber.shade800 : theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    isHalfDay ? 'HALF DAY TARGET' : 'DAILY WORK TARGET',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8,
+                      color: isHalfDay ? Colors.amber.shade900 : theme.colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '${(progress * 100).toInt()}%',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isCompleted ? Colors.green.shade700 : (isHalfDay ? Colors.amber.shade900 : null),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${_formatHhMm(_currentWorking)} / ${_formatHhMm(targetDuration)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (isCompleted)
+                Text(
+                  overtime > Duration.zero ? '+${_formatHhMm(overtime)} Overtime 🎉' : 'Target Reached! 🎉',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade700,
+                  ),
+                )
+              else
+                Text(
+                  '${_formatHhMm(remaining)} remaining',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
