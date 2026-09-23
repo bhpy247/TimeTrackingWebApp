@@ -224,17 +224,23 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
       updatedAt: DateTime.now(),
     );
 
+    final effectiveExpectedWorking = _workType == WorkType.halfDay
+        ? settings.expectedWorkingHours / 2.0
+        : settings.expectedWorkingHours;
     final gross = TimeCalculator.calculateGrossDuration(previewEntry);
     final breakDuration = TimeCalculator.calculateBreakDuration(previewEntry);
     final working = TimeCalculator.calculateWorkingDuration(previewEntry);
-    final overtime = TimeCalculator.calculateOvertime(previewEntry, settings.expectedWorkingHours);
-    final shortfall = TimeCalculator.calculateShortfall(previewEntry, settings.expectedWorkingHours);
+    final overtime = TimeCalculator.calculateOvertime(previewEntry, effectiveExpectedWorking);
+    final shortfall = TimeCalculator.calculateShortfall(previewEntry, effectiveExpectedWorking);
 
     // Salary/Attendance calculations (breaks are ignored)
     final attendanceDuration = SalaryCalculationService.calculateAttendanceDuration(previewEntry);
-    final requiredDuration = (_workType == WorkType.leave || _workType == WorkType.holiday)
-        ? Duration.zero
-        : Duration(minutes: (settings.requiredDailyDurationHours * 60).round());
+    final effectiveRequiredAttendance = (_workType == WorkType.leave || _workType == WorkType.holiday)
+        ? 0.0
+        : (_workType == WorkType.halfDay
+            ? settings.requiredDailyDurationHours / 2.0
+            : settings.requiredDailyDurationHours);
+    final requiredDuration = Duration(minutes: (effectiveRequiredAttendance * 60).round());
     final salaryShortfall = SalaryCalculationService.calculateShortfall(previewEntry, settings.requiredDailyDurationHours);
     final salaryOvertime = SalaryCalculationService.calculateOvertime(previewEntry, settings.requiredDailyDurationHours);
     
@@ -284,6 +290,10 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
                         case WorkType.wfh:
                           icon = Icons.home_outlined;
                           label = 'WFH';
+                          break;
+                        case WorkType.halfDay:
+                          icon = Icons.hourglass_bottom;
+                          label = 'Half Day';
                           break;
                         case WorkType.leave:
                           icon = Icons.beach_access_outlined;
@@ -353,8 +363,8 @@ class _DailyDetailScreenState extends ConsumerState<DailyDetailScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Working Hours Inputs (Only if Office / WFH)
-          if (_workType == WorkType.office || _workType == WorkType.wfh) ...[
+          // Working Hours Inputs (If Office / WFH / Half Day)
+          if (_workType == WorkType.office || _workType == WorkType.wfh || _workType == WorkType.halfDay) ...[
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),

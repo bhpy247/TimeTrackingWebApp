@@ -177,6 +177,22 @@ class CalendarScreen extends ConsumerWidget {
       } else if (entry.workType == WorkType.leave) {
         backgroundColor = theme.colorScheme.secondaryContainer.withOpacity(0.4);
         statusIndicator = Icon(Icons.beach_access, size: 14, color: theme.colorScheme.secondary);
+      } else if (entry.workType == WorkType.halfDay) {
+        if (entry.startTime != null) {
+          final working = TimeCalculator.calculateWorkingDuration(entry);
+          textColor = Colors.white;
+          backgroundColor = entry.endTime == null
+              ? Colors.amber.shade700
+              : Colors.amber.shade800;
+          statusIndicator = Text(
+            '${working.inHours}h ${working.inMinutes % 60}m',
+            style: const TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.w600),
+          );
+        } else {
+          backgroundColor = Colors.amber.shade100;
+          textColor = Colors.amber.shade900;
+          statusIndicator = Icon(Icons.hourglass_bottom, size: 14, color: Colors.amber.shade800);
+        }
       } else if (entry.startTime != null) {
         final working = TimeCalculator.calculateWorkingDuration(entry);
         textColor = Colors.white;

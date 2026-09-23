@@ -37,7 +37,8 @@ class TimeCalculator {
       return Duration.zero;
     }
     final working = calculateWorkingDuration(entry, relativeTo: relativeTo);
-    final expected = Duration(milliseconds: (expectedHours * 3600 * 1000).toInt());
+    final effectiveHours = entry.workType == WorkType.halfDay ? expectedHours / 2.0 : expectedHours;
+    final expected = Duration(milliseconds: (effectiveHours * 3600 * 1000).toInt());
     if (working > expected) {
       return working - expected;
     }
@@ -50,7 +51,8 @@ class TimeCalculator {
       return Duration.zero;
     }
     final working = calculateWorkingDuration(entry, relativeTo: relativeTo);
-    final expected = Duration(milliseconds: (expectedHours * 3600 * 1000).toInt());
+    final effectiveHours = entry.workType == WorkType.halfDay ? expectedHours / 2.0 : expectedHours;
+    final expected = Duration(milliseconds: (effectiveHours * 3600 * 1000).toInt());
     if (working < expected) {
       return expected - working;
     }

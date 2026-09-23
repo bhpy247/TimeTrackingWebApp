@@ -19,12 +19,15 @@ class SalaryCalculationService {
 
   /// Daily shortfall: Max(0, Required Daily Duration - Attendance Duration)
   static Duration calculateShortfall(TimeEntry entry, double requiredDailyHours, {DateTime? relativeTo}) {
-    if (entry.startTime == null) return Duration.zero;
     if (entry.workType == WorkType.leave || entry.workType == WorkType.holiday) {
       return Duration.zero;
     }
+    if (entry.startTime == null && entry.workType != WorkType.halfDay) {
+      return Duration.zero;
+    }
+    final effectiveRequiredHours = entry.workType == WorkType.halfDay ? requiredDailyHours / 2.0 : requiredDailyHours;
     final actual = calculateAttendanceDuration(entry, relativeTo: relativeTo);
-    final required = Duration(milliseconds: (requiredDailyHours * 3600 * 1000).toInt());
+    final required = Duration(milliseconds: (effectiveRequiredHours * 3600 * 1000).toInt());
     if (actual < required) {
       return required - actual;
     }
@@ -37,8 +40,9 @@ class SalaryCalculationService {
     if (entry.workType == WorkType.leave || entry.workType == WorkType.holiday) {
       return Duration.zero;
     }
+    final effectiveRequiredHours = entry.workType == WorkType.halfDay ? requiredDailyHours / 2.0 : requiredDailyHours;
     final actual = calculateAttendanceDuration(entry, relativeTo: relativeTo);
-    final required = Duration(milliseconds: (requiredDailyHours * 3600 * 1000).toInt());
+    final required = Duration(milliseconds: (effectiveRequiredHours * 3600 * 1000).toInt());
     if (actual > required) {
       return actual - required;
     }

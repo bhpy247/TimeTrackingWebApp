@@ -152,6 +152,7 @@ class ReportsScreen extends ConsumerWidget {
           int wfhCount = 0;
           int leaveCount = 0;
           int holidayCount = 0;
+          int halfDayCount = 0;
           int lateArrivals = 0;
           int earlyDepartures = 0;
 
@@ -172,6 +173,9 @@ class ReportsScreen extends ConsumerWidget {
                 break;
               case WorkType.wfh:
                 wfhCount++;
+                break;
+              case WorkType.halfDay:
+                halfDayCount++;
                 break;
               case WorkType.leave:
                 leaveCount++;
@@ -211,8 +215,10 @@ class ReportsScreen extends ConsumerWidget {
             }
           }
 
-          final workingDays = presentCount + wfhCount;
-          final expectedHours = workingDays * settings.expectedWorkingHours;
+          final workingDays = presentCount + wfhCount + (halfDayCount * 0.5);
+          final workingDaysStr = workingDays % 1 == 0 ? '${workingDays.toInt()}' : '$workingDays';
+          final expectedHours = (presentCount + wfhCount) * settings.expectedWorkingHours +
+              (halfDayCount * (settings.expectedWorkingHours / 2.0));
 
           // Average times
           TimeOfDay? avgStartTime;
@@ -463,9 +469,10 @@ class ReportsScreen extends ConsumerWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _buildReportStatItem(theme, '$workingDays', 'Days worked'),
+                          _buildReportStatItem(theme, workingDaysStr, 'Days worked'),
                           _buildReportStatItem(theme, '$presentCount', 'Office'),
                           _buildReportStatItem(theme, '$wfhCount', 'WFH'),
+                          _buildReportStatItem(theme, '$halfDayCount', 'Half Day'),
                           _buildReportStatItem(theme, '$leaveCount', 'Leave'),
                           _buildReportStatItem(theme, '$holidayCount', 'Holidays'),
                         ],
@@ -818,6 +825,9 @@ class ReportsScreen extends ConsumerWidget {
                                 break;
                               case WorkType.wfh:
                                 badgeColor = Colors.teal;
+                                break;
+                              case WorkType.halfDay:
+                                badgeColor = Colors.amber.shade800;
                                 break;
                               case WorkType.leave:
                                 badgeColor = Colors.orange;

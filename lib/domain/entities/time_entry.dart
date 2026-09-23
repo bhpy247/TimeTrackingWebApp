@@ -1,4 +1,4 @@
-enum WorkType { office, wfh, leave, holiday }
+enum WorkType { office, wfh, leave, holiday, halfDay }
 
 class BreakEntry {
   final int? id;

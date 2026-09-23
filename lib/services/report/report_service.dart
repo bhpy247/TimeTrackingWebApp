@@ -50,9 +50,28 @@ class ReportService {
       final workingHoursDec = working.inMinutes / 60.0;
       final workingHoursFormatted = '${working.inHours}h ${working.inMinutes % 60}m';
 
+      String typeStr;
+      switch (entry.workType) {
+        case WorkType.office:
+          typeStr = 'OFFICE';
+          break;
+        case WorkType.wfh:
+          typeStr = 'WFH';
+          break;
+        case WorkType.leave:
+          typeStr = 'LEAVE';
+          break;
+        case WorkType.holiday:
+          typeStr = 'HOLIDAY';
+          break;
+        case WorkType.halfDay:
+          typeStr = 'HALF DAY';
+          break;
+      }
+
       rows.add([
         dateStr,
-        entry.workType.name.toUpperCase(),
+        typeStr,
         startTimeStr,
         endTimeStr,
         breaksDuration.inMinutes,
@@ -88,6 +107,7 @@ class ReportService {
     int wfhCount = 0;
     int leaveCount = 0;
     int holidayCount = 0;
+    int halfDayCount = 0;
 
     for (final entry in sortedEntries) {
       switch (entry.workType) {
@@ -103,10 +123,18 @@ class ReportService {
         case WorkType.holiday:
           holidayCount++;
           break;
+        case WorkType.halfDay:
+          halfDayCount++;
+          break;
       }
     }
 
-    final workingDaysCount = presentCount + wfhCount;
+    final workingDaysCount = presentCount + wfhCount + (halfDayCount * 0.5);
+    final workingDaysStr = workingDaysCount % 1 == 0
+        ? '${workingDaysCount.toInt()} days'
+        : '$workingDaysCount days';
+    final totalExpectedHours = (presentCount + wfhCount) * settings.expectedWorkingHours +
+        (halfDayCount * (settings.expectedWorkingHours / 2.0));
     final totalHoursStr = '${totalDuration.inHours}h ${totalDuration.inMinutes % 60}m';
     final averageHoursStr = '${averageDuration.inHours}h ${averageDuration.inMinutes % 60}m';
 
@@ -162,7 +190,7 @@ class ReportService {
               children: [
                 _buildPdfStatCard('Total Hours', totalHoursStr),
                 _buildPdfStatCard('Daily Avg', averageHoursStr),
-                _buildPdfStatCard('Days Worked', '$workingDaysCount days'),
+                _buildPdfStatCard('Days Worked', workingDaysStr),
                 _buildPdfStatCard('WFH Days', '$wfhCount days'),
               ],
             ),
@@ -170,10 +198,10 @@ class ReportService {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                _buildPdfStatCard('Leave Days', '$leaveCount days'),
-                _buildPdfStatCard('Holidays', '$holidayCount days'),
+                _buildPdfStatCard('Half Days', '$halfDayCount days'),
+                _buildPdfStatCard('Leave / Hol', '$leaveCount / $holidayCount'),
                 _buildPdfStatCard('Expected / Day', '${settings.expectedWorkingHours}h'),
-                _buildPdfStatCard('Total Expected', '${settings.expectedWorkingHours * workingDaysCount}h'),
+                _buildPdfStatCard('Total Expected', '${totalExpectedHours.toStringAsFixed(1)}h'),
               ],
             ),
             pw.SizedBox(height: 24),
@@ -192,7 +220,24 @@ class ReportService {
                 headers: ['Date', 'Type', 'Clock In', 'Clock Out', 'Breaks', 'Net Duration', 'Notes'],
                 data: sortedEntries.map((entry) {
                   final dateStr = DateFormat('MMM d, yyyy (EEE)').format(entry.date);
-                  final typeStr = entry.workType.name.toUpperCase();
+                  String typeStr;
+                  switch (entry.workType) {
+                    case WorkType.office:
+                      typeStr = 'OFFICE';
+                      break;
+                    case WorkType.wfh:
+                      typeStr = 'WFH';
+                      break;
+                    case WorkType.leave:
+                      typeStr = 'LEAVE';
+                      break;
+                    case WorkType.holiday:
+                      typeStr = 'HOLIDAY';
+                      break;
+                    case WorkType.halfDay:
+                      typeStr = 'HALF DAY';
+                      break;
+                  }
                   final startStr = entry.startTime != null ? DateFormat('hh:mm a').format(entry.startTime!) : '--:--';
                   final endStr = entry.endTime != null ? DateFormat('hh:mm a').format(entry.endTime!) : '--:--';
                   

@@ -245,6 +245,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     label: Text('WFH'),
                     icon: Icon(Icons.home_outlined),
                   ),
+                  ButtonSegment<WorkType>(
+                    value: WorkType.halfDay,
+                    label: Text('Half Day'),
+                    icon: Icon(Icons.hourglass_bottom),
+                  ),
                 ],
                 selected: {_selectedWorkType},
                 onSelectionChanged: (newSelection) {
@@ -657,7 +662,9 @@ class _LiveTodaySalarySummaryState extends State<_LiveTodaySalarySummary> {
         ? SalaryCalculationService.calculateOvertime(todayEntry, settings.requiredDailyDurationHours)
         : Duration.zero;
 
-    final requiredDailyHours = settings.requiredDailyDurationHours;
+    final requiredDailyHours = todayEntry?.workType == WorkType.halfDay
+        ? settings.requiredDailyDurationHours / 2.0
+        : settings.requiredDailyDurationHours;
     final estimatedDeduction = SalaryCalculationService.calculateEstimatedDeduction(
       shortfall: todayShortfall,
       monthlySalary: settings.monthlySalary,

@@ -121,6 +121,72 @@ void main() {
       expect(SalaryCalculationService.calculateShortfall(wfhEntry, 9.5), const Duration(hours: 1));
     });
 
+    test('Half Day salary calculation: exact, shortfall, overtime, and no clock-in', () {
+      // Required daily hours: 9.5h -> Half day required: 4.75h (4h 45m)
+      
+      // 1. Exact half day worked (10:00 to 14:45 = 4h 45m attendance)
+      final exactHalfDay = TimeEntry(
+        date: DateTime(2026, 8, 16),
+        startTime: DateTime(2026, 8, 16, 10, 0),
+        endTime: DateTime(2026, 8, 16, 14, 45),
+        workType: WorkType.halfDay,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      expect(SalaryCalculationService.calculateAttendanceDuration(exactHalfDay), const Duration(hours: 4, minutes: 45));
+      expect(SalaryCalculationService.calculateShortfall(exactHalfDay, 9.5), Duration.zero);
+      expect(SalaryCalculationService.calculateOvertime(exactHalfDay, 9.5), Duration.zero);
+
+      // 2. Shortfall on half day (10:00 to 14:00 = 4h attendance -> 45m shortfall against 4.75h required)
+      final shortfallHalfDay = TimeEntry(
+        date: DateTime(2026, 8, 16),
+        startTime: DateTime(2026, 8, 16, 10, 0),
+        endTime: DateTime(2026, 8, 16, 14, 0),
+        workType: WorkType.halfDay,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      expect(SalaryCalculationService.calculateAttendanceDuration(shortfallHalfDay), const Duration(hours: 4));
+      expect(SalaryCalculationService.calculateShortfall(shortfallHalfDay, 9.5), const Duration(minutes: 45));
+      expect(SalaryCalculationService.calculateOvertime(shortfallHalfDay, 9.5), Duration.zero);
+
+      // 3. Overtime on half day (10:00 to 15:45 = 5h 45m attendance -> 1h overtime against 4.75h required)
+      final overtimeHalfDay = TimeEntry(
+        date: DateTime(2026, 8, 16),
+        startTime: DateTime(2026, 8, 16, 10, 0),
+        endTime: DateTime(2026, 8, 16, 15, 45),
+        workType: WorkType.halfDay,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      expect(SalaryCalculationService.calculateAttendanceDuration(overtimeHalfDay), const Duration(hours: 5, minutes: 45));
+      expect(SalaryCalculationService.calculateShortfall(overtimeHalfDay, 9.5), Duration.zero);
+      expect(SalaryCalculationService.calculateOvertime(overtimeHalfDay, 9.5), const Duration(hours: 1));
+
+      // 4. Half day marked with no clock-in (startTime == null) -> full 4h 45m shortfall (half-day deduction)
+      final noClockInHalfDay = TimeEntry(
+        date: DateTime(2026, 8, 16),
+        workType: WorkType.halfDay,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      expect(SalaryCalculationService.calculateAttendanceDuration(noClockInHalfDay), Duration.zero);
+      expect(SalaryCalculationService.calculateShortfall(noClockInHalfDay, 9.5), const Duration(hours: 4, minutes: 45));
+      expect(SalaryCalculationService.calculateOvertime(noClockInHalfDay, 9.5), Duration.zero);
+
+      // 5. Estimated deduction for unworked half day: exactly 0.5 day's pay
+      final halfDayDeduction = SalaryCalculationService.calculateEstimatedDeduction(
+        shortfall: const Duration(hours: 4, minutes: 45),
+        monthlySalary: 70000,
+        requiredDailyHours: 9.5,
+        payrollDays: 26,
+        deductionMethod: SalaryDeductionMethod.perDay,
+        roundingMethod: RoundingMethod.exact,
+      );
+      // (70000 / 26) * 0.5 = 1346.1538
+      expect(halfDayDeduction, closeTo((70000 / 26) * 0.5, 0.0001));
+    });
+
     test('Rounding rules', () {
       const shortfall = Duration(hours: 1, minutes: 17); // 77 minutes
 
